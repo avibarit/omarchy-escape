@@ -73,6 +73,26 @@ SHIFT_SWAP = {
     "next": "prev",
 }
 
+# Shift+2 is "@" (US) or '"' (UK). Map those keyvals back to workspace digits.
+DIGIT_NAMES = {
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "KP_1": 1,
+    "KP_2": 2,
+    "KP_3": 3,
+    "KP_4": 4,
+    "exclam": 1,
+    "at": 2,
+    "numbersign": 3,
+    "dollar": 4,
+    "quotedbl": 2,
+    "sterling": 3,
+    "section": 3,
+}
+PLAIN_DIGITS = {"1", "2", "3", "4", "KP_1", "KP_2", "KP_3", "KP_4"}
+
 NATIVE_BOOTSTRAP = """
 window.OmarchyNative={
   platform:'omarchy',
@@ -145,7 +165,33 @@ def theme_css(colors: dict[str, str]) -> str:
     )
 
 
-def payload_for(key_name: str, shift: bool) -> dict | None:
+def unshifted_key_name(event: Gdk.EventKey) -> str:
+    try:
+        keymap = Gdk.Keymap.get_default()
+        if keymap is None:
+            display = Gdk.Display.get_default()
+            keymap = Gdk.Keymap.get_for_display(display) if display else None
+        if not keymap:
+            return ""
+        ok, keys, keyvals = keymap.get_entries_for_keycode(event.hardware_keycode)
+        if not ok or not keyvals:
+            return ""
+        group = int(getattr(event, "group", 0) or 0)
+        for key, kv in zip(keys, keyvals):
+            if int(getattr(key, "level", 0) or 0) == 0 and int(getattr(key, "group", 0) or 0) in (0, group):
+                return Gdk.keyval_name(Gdk.keyval_to_lower(kv)) or ""
+        return Gdk.keyval_name(Gdk.keyval_to_lower(keyvals[0])) or ""
+    except Exception:
+        return ""
+
+
+def payload_for(key_name: str, shift: bool, unshifted: str | None = None) -> dict | None:
+    digit = DIGIT_NAMES.get(unshifted or "") or DIGIT_NAMES.get(key_name)
+    if digit:
+        shifted_symbol = key_name not in PLAIN_DIGITS
+        act = "carry" if (shift or shifted_symbol) else "goto"
+        return {"act": act, "ws": digit, "fromNative": True}
+
     mapped = KEY_MAP.get(key_name)
     if not mapped:
         return None
@@ -171,6 +217,21 @@ def hypr_eval(code: str) -> None:
         )
     except Exception:
         pass
+
+
+def gstreamer_has_autoaudiosink() -> bool:
+    try:
+        return (
+            subprocess.run(
+                ["gst-inspect-1.0", "autoaudiosink"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+            ).returncode
+            == 0
+        )
+    except Exception:
+        return False
 
 
 def set_unlock_flag(unlocked: bool) -> None:
@@ -250,6 +311,15 @@ class EscapeApp(Gtk.Application):
             settings.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.ALWAYS)
         except Exception:
             pass
+        if not gstreamer_has_autoaudiosink():
+            try:
+                settings.set_enable_webaudio(False)
+            except Exception:
+                pass
+            try:
+                settings.set_enable_media(False)
+            except Exception:
+                pass
 
         self.webview.connect("load-changed", self._on_load)
         self.webview.load_uri(INDEX.resolve().as_uri())
@@ -364,6 +434,7 @@ class EscapeApp(Gtk.Application):
         shift_on = bool(state & Gdk.ModifierType.SHIFT_MASK)
         name = Gdk.keyval_name(Gdk.keyval_to_lower(event.keyval)) or ""
         raw = Gdk.keyval_name(event.keyval) or name
+        base = unshifted_key_name(event)
         if super_on and (name in ("Escape", "escape") or raw in ("Escape", "escape")):
             self._set_super_grab(False)
             return True
@@ -376,7 +447,11 @@ class EscapeApp(Gtk.Application):
             return False
         if not (super_on or alt_on):
             return False
-        payload = payload_for(raw, shift_on) or payload_for(name, shift_on)
+        payload = (
+            payload_for(raw, shift_on, base)
+            or payload_for(name, shift_on, base)
+            or payload_for(base, shift_on, base)
+        )
         if not payload:
             return False
         if super_on:

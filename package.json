@@ -7,7 +7,7 @@
     "start": "./omarchy-escape",
     "install-omarchy": "./install.sh",
     "electron": "electron .",
-    "test": "node --check main.js && node --check preload.js && for f in js/*.js; do node --check \"$f\"; done && node test/tiling.test.js && python3 -m py_compile omarchy-escape"
+    "test": "node --check main.js && node --check preload.js && for f in js/*.js; do node --check \"$f\"; done && node test/tiling.test.js && node test/chords.test.js && python3 -m py_compile omarchy-escape"
   },
   "devDependencies": {
     "electron": "^34.0.0"

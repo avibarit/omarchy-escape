@@ -232,13 +232,11 @@
         use('carry', false); toast('Already on workspace ' + ws);
         return;
       }
-      const hadFrag = moving.frag || S.fragsGot > 0;
       T().moveWindow(src, S.rooms[ws], moving.id, { follow: true, bounds: bounds() });
       S.player.ws = ws;
       use('carry', true); window.Sfx.jump();
       dsp('movetoworkspace ' + ws);
-      if (hadFrag) bumpTask('carry');
-      else toast('Moved the window — grab ◆ first for full credit');
+      bumpTask('carry');
       if (from !== ws) bumpTask('jump');
       S.collapseT = 0;
       afterFocus();

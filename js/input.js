@@ -174,12 +174,10 @@
       const dir = k.replace('Arrow', '').toLowerCase();
       return shift ? { act: 'swap', dir, label: 'Super + Shift + ' + k } : { act: 'focus', dir, label: 'Super + ' + k };
     }
-    // Numbers 1-4 (also Numpad)
-    if (['1', '2', '3', '4'].includes(k)) {
-      return shift
-        ? { act: 'carry', ws: +k, label: 'Super + Shift + ' + k }
-        : { act: 'goto', ws: +k, label: 'Super + ' + k };
-    }
+    // Super+Shift+2 is movetoworkspace. Shift+2 types @/" so e.key is not "2";
+    // physical Digit/Numpad codes still are.
+    const wsChord = window.OmarchyChords && window.OmarchyChords.workspaceChord(e);
+    if (wsChord) return wsChord;
     const low = (k || '').toLowerCase();
     if (k === 'Tab') return shift ? { act: 'prev', label: 'Super + Shift + Tab' } : { act: 'next', label: 'Super + Tab' };
     if (low === 'j') return { act: 'split', label: 'Super + J' };

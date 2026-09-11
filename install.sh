@@ -59,6 +59,21 @@ if ! python3 -c "import gi; gi.require_version('Gtk', '3.0'); gi.require_version
   exit 1
 fi
 
+# WebKit WebAudio uses GStreamer's autoaudiosink (gst-plugins-good).
+# Without it the window still opens, but WebKitWebProcess prints
+# "autoaudiosink not found" and GObject-CRITICAL on a NULL sink.
+if ! command -v gst-inspect-1.0 >/dev/null 2>&1 || ! gst-inspect-1.0 autoaudiosink >/dev/null 2>&1; then
+  echo "Installing gst-plugins-good (WebKit audio sink)..."
+  if command -v omarchy >/dev/null 2>&1; then
+    omarchy pkg add gst-plugins-good || true
+  elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -S --needed --noconfirm gst-plugins-good || true
+  fi
+  if command -v gst-inspect-1.0 >/dev/null 2>&1 && ! gst-inspect-1.0 autoaudiosink >/dev/null 2>&1; then
+    echo "  note: sound may be silent until gst-plugins-good is installed"
+  fi
+fi
+
 mkdir -p "$BIN_DIR" "$APP_DIR" "$ICON_DIR" "$HYPR_DIR"
 
 chmod +x "${ROOT}/omarchy-escape" "${ROOT}/install.sh"
