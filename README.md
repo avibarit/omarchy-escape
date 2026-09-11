@@ -1,8 +1,8 @@
-# ◈ OMARCHY ESCAPE — Tiling Survival Trainer
+# ◈ OMARCHY ESCAPE — Hyprland survival trainer
 
-Self-contained game (no deps, works via `file://`) that teaches the **Core 12 Omarchy/Hyprland tiling shortcuts** by making you survive them:
+Self-contained game (no deps, works via `file://`) that teaches the **Core 12 Omarchy/Hyprland tiling shortcuts** by putting you inside a real dwindle session:
 
-Rooms (workspaces 1–4) close in via **The Shrink**. Move focus, swap glitches, jump rooms, carry fragments, re-tile splits, spawn terminals, shield.
+You are the **focused window**. Workspaces are binary-tree layouts. `Super+Enter` splits the focused pane. `Super+W` kills it and the tree reflows. Unused clients rot. Leaky ones fork.
 
 ## Run
 
@@ -34,17 +34,17 @@ open index.html
 
 | Omarchy | In-game |
 |---|---|
-| `Super + Arrows` | Move focus |
-| `Super + Shift + Arrows` | Swap window |
-| `Super + 1–4` | Jump to Room |
-| `Super + Shift + 1–4` | Carry fragment to Room (movetoworkspace + follow) |
-| `Super + Tab / Shift+Tab` | Next / prev Room |
-| `Super + J` | Toggle split H↔V (repairs 1 edge tile) |
-| `Super + F` | Fullscreen shield 3s (cd 20s) |
-| `Super + W` | Close adjacent glitch |
-| `Super + Enter` | Spawn safe tile, repairs 3×3 (25⚡) |
+| `Super + Arrows` | `movefocus` — geometric neighbor in the tree |
+| `Super + Shift + Arrows` | `swapwindow` with neighbor |
+| `Super + 1–4` | `workspace N` |
+| `Super + Shift + 1–4` | `movetoworkspace N` (carry focused client + follow) |
+| `Super + Tab / Shift+Tab` | Next / prev workspace |
+| `Super + J` | `togglesplit` (dwindle only — stack ↔ side) |
+| `Super + F` | `fullscreen` shield 3s (cd 20s) |
+| `Super + W` | `killactive` — close focused, reflow |
+| `Super + Enter` | `exec kitty` — split focused pane (25⚡) |
 | `Super + Space` | Launcher (type 1–4) |
-| `Super + L` | dwindle ↔ scrolling (slow collapse 10s) |
+| `Super + L` | dwindle ↔ scrolling (slow Shrink 10s) |
 | `Super + K` | This cheat sheet (pauses) |
 
 The game listens for the **real `Super` key** (`e.metaKey` = Win/Cmd).
@@ -60,27 +60,34 @@ Browsers/OS reserve some `Super` combos (`Super+1/W/Tab/Space` switch tabs, clos
 
 This keeps muscle-memory teaching correct (`Super` labels) while staying playable.
 
+## How it tiles (Hyprland dwindle)
+
+Each workspace is a **binary space partition**. The first `exec` splits the focused window along its longer axis (wide pane → side-by-side, tall pane → stacked). `togglesplit` flips that parent. Scrolling layout ignores the tree and puts every client in a single row.
+
+The Shrink always corrupts the **least-recently-focused** client, not a grid edge — so cycling windows is how you stay alive. Combo (chained dispatchers) slows the rot.
+
 ## Levels
 
-- **L0 Calibration** — arrows + `Super+K`, no collapse
-- **L1 Shrink wakes** — slow collapse, focus only
-- **L2 Swap it away** — glitches block, swap/close
-- **L3 Jump, the room dies** — fast collapse, `Super+2/Tab`
-- **L4 Carry the key** — `Super+Shift+2`
-- **L5 Split & spawn** — `Super+J`, `Super+Enter`
-- **L6 Full escape** — 4 rooms, everything + `F/L/Space/W`
+- **L0 Calibration** — movefocus + `Super+K`, no collapse
+- **L1 Unused windows rot** — cycle focus, two keys
+- **L2 Kill or swap** — leaky client in the tree
+- **L3 Jump workspace** — fast collapse, `Super+2/Tab`
+- **L4 movetoworkspace** — `Super+Shift+2`
+- **L5 Spawn & togglesplit** — `Super+J`, `Super+Enter`
+- **L6 Full session** — 4 workspaces; requires `Super+F` fullscreen and `Super+L` scrolling, then `W` / exit on ws 4
 
-Death screen tells you which shortcut would have saved you. End screen shows per-key accuracy.
+Death screen tells you which dispatcher would have saved you. End screen shows per-key accuracy.
 
 ## Files
 
 ```
-index.html  — shell, Waybar topbar, board, overlays
+index.html  — Waybar, desktop, overlays
 css/style.css
 js/input.js   — Meta/Alt combo matcher, pad wiring
-js/tiling.js  — Room model, Shrink, split toggle
-js/levels.js  — L0–L6 data
-js/game.js    — state, loop, render, objectives
+js/tiling.js  — dwindle BSP + scrolling compositor
+js/levels.js  — L0–L6 session setups
+js/game.js    — state, dispatchers, loop, render
+test/tiling.test.js
 ```
 
 Verified against Omarchy manual hotkeys (`Super+K` sheet, Navigation page) Aug 2026.

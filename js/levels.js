@@ -1,101 +1,140 @@
-/* levels.js — L0..L6 data-driven tutorial */
+/* levels.js — L0..L6, each a tiny Hyprland session */
 (function () {
-  // pos helpers: {x,y}
   const LEVELS = [
     {
       id: 0, name: 'L0 — Calibration', collapseEvery: 0,
-      rooms: [1],
-      start: { ws: 1, x: 3, y: 2 },
-      frags: [{ ws: 1, x: 4, y: 2 }],
-      glitches: [],
-      exitAfterFrags: false,
-      objective: 'Learn to move. Hold Super and use ←↑↓→ to step onto ◆.',
+      rooms: [1], startWs: 1,
+      setup: {
+        1: [
+          { app: 'kitty', title: '~/omarchy', focus: true },
+          { app: 'nvim', title: 'README.md', frag: true },
+        ],
+      },
+      objective: 'You are the focused window. Super+Arrows moves focus — Hyprland movefocus. Land on nvim to pick up ◆.',
       tasks: [
         { id: 'move4', text: 'Move focus 4 times (Super+Arrows)', need: 4, count: 0 },
         { id: 'help', text: 'Open the cheat sheet (Super+K) and close it', need: 1, count: 0 },
-        { id: 'frag', text: 'Pick up 1 fragment ◆', need: 1, count: 0 },
+        { id: 'frag', text: 'Focus the nvim window and take its fragment', need: 1, count: 0 },
       ]
     },
     {
-      id: 1, name: 'L1 — The Shrink wakes', collapseEvery: 6.0,
-      rooms: [1],
-      start: { ws: 1, x: 3, y: 2 },
-      frags: [{ ws: 1, x: 5, y: 1 }, { ws: 1, x: 1, y: 3 }],
-      glitches: [],
-      objective: 'Edges corrupt every 6s. Grab 2 ◆ with Super+Arrows, then reach the green exit.',
+      id: 1, name: 'L1 — Unused windows rot', collapseEvery: 7.2,
+      rooms: [1], startWs: 1,
+      setup: {
+        1: [
+          { app: 'kitty', title: 'tty1', focus: true },
+          { app: 'nvim', title: 'hyprland.conf', frag: true },
+          { app: 'btop', title: 'btop', frag: true },
+        ],
+      },
+      objective: 'The Shrink corrupts the window you have not focused. Keep cycling Super+Arrows, grab both ◆, then focus the exit client.',
       tasks: [
         { id: 'frag', text: 'Collect 2 fragments', need: 2, count: 0 },
-        { id: 'exit', text: 'Reach the exit tile', need: 1, count: 0 },
+        { id: 'exit', text: 'Focus the exit client (wlogout)', need: 1, count: 0 },
       ]
     },
     {
-      id: 2, name: 'L2 — Swap it away', collapseEvery: 7.0,
-      rooms: [1],
-      start: { ws: 1, x: 1, y: 2 },
-      frags: [{ ws: 1, x: 5, y: 2 }],
-      // wall of glitches with one swappable gap logic: glitches block focus
-      glitches: [{ ws: 1, x: 3, y: 1 }, { ws: 1, x: 3, y: 2 }, { ws: 1, x: 3, y: 3 }],
-      objective: 'Glitches (👾) block focus. Face one and press Super+Shift+Arrow to swap, or Super+W to close.',
+      id: 2, name: 'L2 — Kill or swap', collapseEvery: 8.5,
+      rooms: [1], startWs: 1,
+      setup: {
+        1: [
+          { app: 'kitty', title: 'tty1', focus: true },
+          { app: 'zsh', title: 'wayland-leak', glitch: true },
+          { app: 'nvim', title: 'init.lua', frag: true },
+        ],
+      },
+      objective: 'A leaky client is in the tree. Super+Shift+Arrow swaps it (swapwindow). Super+W is killactive.',
       tasks: [
-        { id: 'swap', text: 'Swap OR close a glitch (Super+Shift+Arrow / Super+W)', need: 1, count: 0 },
+        { id: 'swap', text: 'Swap OR close the glitch client', need: 1, count: 0 },
         { id: 'frag', text: 'Collect 1 fragment', need: 1, count: 0 },
-        { id: 'exit', text: 'Reach the exit', need: 1, count: 0 },
+        { id: 'exit', text: 'Focus the exit client', need: 1, count: 0 },
       ]
     },
     {
-      id: 3, name: 'L3 — Jump, the room dies', collapseEvery: 3.5,
-      rooms: [1, 2],
-      start: { ws: 1, x: 3, y: 2 },
-      frags: [{ ws: 2, x: 3, y: 2 }],
-      glitches: [],
-      objective: 'Room 1 collapses fast. Jump with Super+2 (or Super+Tab) before it eats you.',
+      id: 3, name: 'L3 — Jump workspace', collapseEvery: 5.2,
+      rooms: [1, 2], startWs: 1,
+      setup: {
+        1: [
+          { app: 'kitty', title: 'tty1', focus: true },
+          { app: 'chromium', title: 'status.local' },
+        ],
+        2: [
+          { app: 'nvim', title: 'notes.md', frag: true },
+          { app: 'yazi', title: '~/' },
+        ],
+      },
+      objective: 'Workspace 1 is dying. Super+2 (or Super+Tab) jumps workspaces — the fragment lives on ws 2.',
       tasks: [
-        { id: 'jump', text: 'Jump to Room 2 (Super+2 / Super+Tab)', need: 1, count: 0 },
-        { id: 'frag', text: 'Collect 1 fragment in Room 2', need: 1, count: 0 },
-        { id: 'exit', text: 'Reach the exit', need: 1, count: 0 },
+        { id: 'jump', text: 'Jump to workspace 2 (Super+2 / Super+Tab)', need: 1, count: 0 },
+        { id: 'frag', text: 'Collect 1 fragment on ws 2', need: 1, count: 0 },
+        { id: 'exit', text: 'Focus the exit client', need: 1, count: 0 },
       ]
     },
     {
-      id: 4, name: 'L4 — Carry the key', collapseEvery: 5.0,
-      rooms: [1, 2],
-      start: { ws: 1, x: 2, y: 2 },
-      frags: [{ ws: 1, x: 4, y: 2 }],
-      glitches: [],
-      exitRoom: 2,
-      objective: 'Pick up ◆ in Room 1, then carry it: Super+Shift+2 (you follow, like movetoworkspace). Exit is in Room 2.',
+      id: 4, name: 'L4 — movetoworkspace', collapseEvery: 6.8,
+      rooms: [1, 2], startWs: 1, exitRoom: 2,
+      setup: {
+        1: [
+          { app: 'kitty', title: 'tty1', focus: true },
+          { app: 'nvim', title: 'key.lua', frag: true },
+        ],
+        2: [
+          { app: 'btop', title: 'btop' },
+        ],
+      },
+      objective: 'The key is in nvim. Super+Shift+2 moves that window to workspace 2 and follows (movetoworkspace). Exit opens there.',
       tasks: [
-        { id: 'frag', text: 'Pick up fragment', need: 1, count: 0 },
-        { id: 'carry', text: 'Carry to Room 2 (Super+Shift+2)', need: 1, count: 0 },
-        { id: 'exit', text: 'Reach exit in Room 2', need: 1, count: 0 },
+        { id: 'frag', text: 'Take the fragment from nvim', need: 1, count: 0 },
+        { id: 'carry', text: 'Carry the focused window to ws 2 (Super+Shift+2)', need: 1, count: 0 },
+        { id: 'exit', text: 'Focus the exit client on ws 2', need: 1, count: 0 },
       ]
     },
     {
-      id: 5, name: 'L5 — Split & spawn', collapseEvery: 5.0,
-      rooms: [1],
-      start: { ws: 1, x: 3, y: 2 },
-      frags: [{ ws: 1, x: 6, y: 0 }],
-      glitches: [{ ws: 1, x: 4, y: 1 }, { ws: 1, x: 4, y: 2 }, { ws: 1, x: 4, y: 3 }],
-      preCorrupt: ['col0', 'col6b'], // flavor: edges already eaten
-      objective: 'Blocked? Super+J re-tiles (repairs 1 edge tile). Super+Enter spawns safe ground (25⚡).',
+      id: 5, name: 'L5 — Spawn & togglesplit', collapseEvery: 6.8,
+      rooms: [1], startWs: 1,
+      setup: {
+        1: [
+          { app: 'kitty', title: 'tty1', focus: true },
+          { app: 'zsh', title: 'fork', glitch: true },
+          { app: 'nvim', title: 'hyprland.conf', frag: true, corrupt: true },
+        ],
+      },
+      objective: 'Super+Enter execs kitty and splits the focused pane (25⚡). Super+J togglesplit — stack vs side. Close the leak if it is in the way.',
       tasks: [
         { id: 'split', text: 'Toggle split (Super+J)', need: 1, count: 0 },
-        { id: 'spawn', text: 'Spawn/repair a tile (Super+Enter)', need: 1, count: 0 },
+        { id: 'spawn', text: 'Spawn a terminal (Super+Enter)', need: 1, count: 0 },
         { id: 'frag', text: 'Collect 1 fragment', need: 1, count: 0 },
-        { id: 'exit', text: 'Reach the exit', need: 1, count: 0 },
+        { id: 'exit', text: 'Focus the exit client', need: 1, count: 0 },
       ]
     },
     {
-      id: 6, name: 'L6 — Full escape', collapseEvery: 4.0,
-      rooms: [1, 2, 3, 4],
-      start: { ws: 1, x: 3, y: 2 },
-      frags: [{ ws: 1, x: 1, y: 1 }, { ws: 3, x: 5, y: 3 }],
-      glitches: [{ ws: 1, x: 4, y: 2 }, { ws: 3, x: 3, y: 3 }],
-      exitRoom: 4,
-      objective: 'Two ◆ across rooms, glitches, fast Shrink. Use everything: F shield, L scrolling, Space launcher, W close.',
+      id: 6, name: 'L6 — Full session', collapseEvery: 5.6,
+      rooms: [1, 2, 3, 4], startWs: 1, exitRoom: 4,
+      setup: {
+        1: [
+          { app: 'kitty', title: 'tty1', focus: true },
+          { app: 'nvim', title: 'escape.lua', frag: true },
+          { app: 'zsh', title: 'leak-1', glitch: true },
+        ],
+        2: [
+          { app: 'chromium', title: 'omarchy.org' },
+          { app: 'spotify', title: 'Spotify' },
+        ],
+        3: [
+          { app: 'btop', title: 'btop' },
+          { app: 'yazi', title: '~/keys', frag: true },
+          { app: 'zsh', title: 'leak-3', glitch: true },
+        ],
+        4: [
+          { app: 'signal', title: 'Signal' },
+        ],
+      },
+      objective: 'Four workspaces, two keys, leaky clients. Super+F fullscreen, Super+L scrolling, then wlogout on ws 4.',
       tasks: [
-        { id: 'frag', text: 'Collect 2 fragments (any rooms)', need: 2, count: 0 },
-        { id: 'util', text: 'Use a utility: F shield / L layout / Space launcher', need: 1, count: 0 },
-        { id: 'exit', text: 'Reach exit in Room 4', need: 1, count: 0 },
+        { id: 'frag', text: 'Collect 2 fragments (any workspace)', need: 2, count: 0 },
+        { id: 'fullscreen', text: 'Fullscreen the focused window (Super+F)', need: 1, count: 0 },
+        { id: 'layout', text: 'Toggle dwindle ↔ scrolling (Super+L)', need: 1, count: 0 },
+        { id: 'exit', text: 'Focus the exit client on ws 4', need: 1, count: 0 },
       ]
     },
   ];

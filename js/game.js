@@ -1,6 +1,8 @@
-/* game.js — state, loop, rendering, objectives */
+/* game.js — Hyprland session survival: state, dispatchers, loop, render */
 (function () {
-  const COLS = 7, ROWS = 5;
+  const T = () => window.Tiling;
+  const MAX_CLIENTS = 8;
+  const GAP = 8;
   let S = null;
 
   const $ = (id) => document.getElementById(id);
@@ -16,40 +18,62 @@
     t.textContent = msg; t.classList.remove('hidden');
     clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), ms || 2200);
   }
+  function bounds() {
+    const el = $('board');
+    if (!el) return { x: 0, y: 0, w: 1200, h: 700, gap: GAP };
+    const r = el.getBoundingClientRect();
+    return { x: 0, y: 0, w: Math.max(240, r.width), h: Math.max(160, r.height), gap: GAP };
+  }
+  function curRoom() { return S.rooms[S.player.ws]; }
+  function dsp(name) { log('<b>wm:</b> dispatcher <span class="dsp">' + name + '</span>'); }
+
+  function use(name, ok) {
+    S.uses[name] = (S.uses[name] || 0) + 1;
+    if (!ok) {
+      S.fails[name] = (S.fails[name] || 0) + 1;
+      S.combo = 0;
+    } else if (name !== 'help') {
+      if (S.time - S.comboT < 1.4) S.combo++;
+      else S.combo = 1;
+      S.comboT = S.time;
+      S.comboBest = Math.max(S.comboBest || 0, S.combo);
+    }
+  }
 
   function newGame(levelIdx) {
     const L = window.LEVELS[levelIdx];
     const rooms = {};
-    L.rooms.forEach(ws => { rooms[ws] = window.Tiling.makeRoom(ws, COLS, ROWS, { split: ws % 2 ? 'h' : 'v' }); });
+    L.rooms.forEach(ws => {
+      const windows = (L.setup && L.setup[ws]) ? L.setup[ws].map(w => T().makeWindow(w)) : [T().makeWindow({ app: 'kitty' })];
+      rooms[ws] = T().makeRoom(ws, { windows: windows, bounds: { x: 0, y: 0, w: 1600, h: 900, gap: GAP } });
+    });
     S = {
       levelIdx, L, rooms,
-      player: { ws: L.start.ws, x: L.start.x, y: L.start.y, face: 'right' },
+      player: { ws: L.startWs || L.rooms[0] },
       hp: 100, energy: 100, time: 0,
-      fragsGot: 0, fragsTotal: L.frags.length,
+      fragsGot: 0, fragsTotal: L.frags ? L.frags.length : countFrags(rooms),
       collapseT: 0, tickCount: 0,
       shieldT: 0, shieldCD: 0, scrollT: 0, scrollCD: 0,
       over: false, paused: false,
       uses: {}, fails: {},
       exitPlaced: false,
+      combo: 0, comboT: -99, comboBest: 0,
     };
-    // place frags + glitches
-    L.frags.forEach(f => { const t = window.Tiling.tile(rooms[f.ws], f.x, f.y); if (t) t.frag = true; });
-    (L.glitches || []).forEach(g => { const t = window.Tiling.tile(rooms[g.ws], g.x, g.y); if (t) t.glitch = true; });
-    if (L.preCorrupt) {
-      const r = rooms[1];
-      for (let y = 0; y < ROWS; y++) { r.tiles[y][0].corrupt = true; }
-      r.tiles[0][6].corrupt = true; r.tiles[4][6].corrupt = true;
-    }
     resetTasks();
-    $('overlay-title').classList.add('hidden');
-    $('overlay-end').classList.add('hidden');
-    $('overlay-help').classList.add('hidden');
-    $('overlay-launch').classList.add('hidden');
+    ['overlay-title', 'overlay-end', 'overlay-help', 'overlay-launch'].forEach(id => $(id).classList.add('hidden'));
     S.paused = false;
-    log('<b>wm:</b> entered ' + L.name + ' — ' + L.objective);
+    log('<b>wm:</b> session ' + L.name + ' — ' + L.objective);
     toast(L.name);
     window.Sfx.good();
-    renderAll();
+    afterFocus();
+  }
+
+  function countFrags(rooms) {
+    let n = 0;
+    Object.keys(rooms).forEach(id => {
+      T().leaves(rooms[id]).forEach(w => { if (w.frag) n++; });
+    });
+    return n;
   }
 
   function resetTasks() {
@@ -75,155 +99,19 @@
     $('level-label').textContent = S.L.name.split(' ')[0];
   }
 
-  function curRoom() { return S.rooms[S.player.ws]; }
-  function use(name, ok) {
-    S.uses[name] = (S.uses[name] || 0) + 1;
-    if (!ok) S.fails[name] = (S.fails[name] || 0) + 1;
-  }
-
-  // ---------- actions ----------
-  function doFocus(dir) {
-    const d = window.Tiling.DIRS[dir]; if (!d) return;
-    S.player.face = dir;
-    const nx = S.player.x + d[0], ny = S.player.y + d[1];
+  function afterFocus() {
     const r = curRoom();
-    if (!window.Tiling.inBounds(r, nx, ny)) { use('focus', false); window.Sfx.bad(); toast('Edge of workspace — jump rooms instead'); return; }
-    const t = window.Tiling.tile(r, nx, ny);
-    if (t.glitch) { use('focus', false); window.Sfx.bad(); toast('👾 blocks focus — swap (Super+Shift+' + dir + ') or close (Super+W)'); return; }
-    S.player.x = nx; S.player.y = ny;
-    use('focus', true); window.Sfx.move();
-    const mv = S.L.tasks.find(t => t.id === 'move4'); if (mv && mv.count < mv.need) bumpTask('move4');
-    afterStep();
-  }
-
-  function doSwap(dir) {
-    const d = window.Tiling.DIRS[dir || S.player.face]; if (!d) return;
-    S.player.face = dir || S.player.face;
-    const r = curRoom();
-    const nx = S.player.x + d[0], ny = S.player.y + d[1];
-    if (!window.Tiling.inBounds(r, nx, ny)) { use('swap', false); window.Sfx.bad(); return; }
-    const a = window.Tiling.tile(r, S.player.x, S.player.y);
-    const b = window.Tiling.tile(r, nx, ny);
-    // swap contents (glitch/frag/exit/corrupt stay with tile? swap entities: glitch & frag move)
-    const hadGlitch = b.glitch;
-    const tmpG = a.glitch, tmpF = a.frag;
-    a.glitch = b.glitch; a.frag = b.frag;
-    b.glitch = tmpG; b.frag = tmpF;
-    S.player.x = nx; S.player.y = ny;
-    use('swap', true); window.Sfx.jump();
-    log('<b>wm:</b> swapped window ' + (dir || 'fwd'));
-    // swapping onto frag picks it up via afterStep; swapping a glitch away counts
-    if (hadGlitch) bumpTask('swap');
-    else if (S.L.tasks.find(t => t.id === 'swap') && !(S.L.tasks.find(t => t.id === 'swap').count >= 1)) {
-      // allow swap movement to count too in L2? require glitch involvement — else hint
-      toast('Swapped empty tiles — aim at 👾');
-    }
-    afterStep(true);
-  }
-
-  function gotoRoom(ws, viaCarry) {
-    if (!S.rooms[ws]) { use(viaCarry ? 'carry' : 'goto', false); window.Sfx.bad(); toast('Room ' + ws + ' not in this level'); return; }
-    const from = S.player.ws;
-    S.player.ws = ws;
-    // land on safest tile near center
-    const r = curRoom();
-    const safe = window.Tiling.safeTiles(r).filter(p => !window.Tiling.tile(r, p.x, p.y).glitch);
-    let best = safe[0] || { x: 3, y: 2 };
-    let bd = 1e9;
-    safe.forEach(p => { const d = Math.abs(p.x - 3) + Math.abs(p.y - 2); if (d < bd) { bd = d; best = p; } });
-    S.player.x = best.x; S.player.y = best.y;
-    S.collapseT = 0;
-    use(viaCarry ? 'carry' : 'goto', true); window.Sfx.jump();
-    log('<b>wm:</b> ' + (viaCarry ? 'moved window to' : 'switched to') + ' workspace ' + ws);
-    if (viaCarry && S.fragsGot > 0) bumpTask('carry');
-    else if (viaCarry) toast('Carried window — grab ◆ first for full credit');
-    if (from !== ws) {
-      bumpTask('jump');
-    } else if (!viaCarry) {
-      toast('Already in Room ' + ws);
-    }
-    afterStep(true);
-  }
-
-  function doClose() {
-    const r = curRoom();
-    const d = window.Tiling.DIRS[S.player.face] || [1, 0];
-    const spots = [
-      { x: S.player.x, y: S.player.y },
-      { x: S.player.x + d[0], y: S.player.y + d[1] },
-    ];
-    for (const p of spots) {
-      const t = window.Tiling.tile(r, p.x, p.y);
-      if (t && t.glitch) {
-        t.glitch = false;
-        use('close', true); window.Sfx.good();
-        log('<b>wm:</b> closed window (killed glitch)');
-        bumpTask('swap'); // L2 accepts swap OR close
-        renderAll();
-        checkComplete();
-        return;
-      }
-    }
-    use('close', false); window.Sfx.bad();
-    toast('No 👾 here — face it first (Super+Arrow), then Super+W');
-  }
-
-  function doSpawn() {
-    if (S.energy < 25) { use('spawn', false); window.Sfx.bad(); toast('Not enough ⚡ (need 25)'); return; }
-    const r = curRoom();
-    let fixed = 0;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const t = window.Tiling.tile(r, S.player.x + dx, S.player.y + dy);
-      if (t && t.corrupt) { t.corrupt = false; fixed++; }
-    }
-    S.energy -= 25;
-    use('spawn', true); window.Sfx.good();
-    log('<b>wm:</b> spawned terminal here (' + fixed + ' tiles repaired)');
-    toast(fixed ? 'New window tiled +' + fixed + ' repaired' : 'New window tiled (area already clean)');
-    bumpTask('spawn');
-    renderAll();
-  }
-
-  function doSplit() {
-    const fixed = window.Tiling.toggleSplit(curRoom());
-    use('split', true); window.Sfx.jump();
-    $('split-badge').textContent = 'split: ' + (curRoom().split === 'h' ? '══' : '║');
-    log('<b>wm:</b> togglesplit → ' + curRoom().split);
-    toast(fixed ? 'Split toggled, re-tiled 1 edge tile' : 'Split toggled');
-    bumpTask('split');
-    renderAll();
-  }
-
-  function doShield() {
-    if (S.shieldCD > 0) { use('shield', false); toast('Shield cooldown ' + Math.ceil(S.shieldCD) + 's'); window.Sfx.bad(); return; }
-    S.shieldT = 3; S.shieldCD = 20;
-    use('shield', true); bumpTask('util'); window.Sfx.good();
-    toast('Fullscreen shield — collapse frozen 3s');
-    log('<b>wm:</b> fullscreen (shield 3s)');
-  }
-
-  function doLayout() {
-    const r = curRoom();
-    r.layout = r.layout === 'dwindle' ? 'scrolling' : 'dwindle';
-    if (r.layout === 'scrolling') { S.scrollT = 10; S.scrollCD = 25; }
-    use('layout', true); bumpTask('util'); window.Sfx.jump();
-    $('layout-badge').textContent = r.layout;
-    toast('Layout → ' + r.layout + (r.layout === 'scrolling' ? ' (collapse slowed 10s)' : ''));
-    log('<b>wm:</b> workspace layout → ' + r.layout);
-    renderAll();
-  }
-
-  function afterStep(skipPickup) {
-    const r = curRoom();
-    const t = window.Tiling.tile(r, S.player.x, S.player.y);
-    if (t.frag) {
-      t.frag = false; S.fragsGot++;
+    const w = T().focused(r);
+    if (!w) { renderAll(); checkComplete(); return; }
+    w.lastFocus = S.time;
+    if (w.frag) {
+      w.frag = false; S.fragsGot++;
       use('frag', true); window.Sfx.good();
-      log('<b>wm:</b> picked up fragment ' + S.fragsGot + '/' + S.fragsTotal);
+      dsp('exec grab-key (' + S.fragsGot + '/' + S.fragsTotal + ')');
       bumpTask('frag');
-      if (S.fragsGot >= S.fragsTotal) placeExit();
+      if (S.fragsGot >= S.fragsTotal && S.L.tasks.some(t => t.id === 'exit')) placeExit();
     }
-    if (t.exit) { bumpTask('exit'); }
+    if (w.exit) bumpTask('exit');
     renderAll();
     checkComplete();
   }
@@ -234,32 +122,29 @@
     const targetWs = S.L.exitRoom || S.player.ws;
     const r = S.rooms[targetWs];
     if (!r) return;
-    // farthest safe non-glitch tile from player
-    const safe = window.Tiling.safeTiles(r).filter(p => {
-      const t = window.Tiling.tile(r, p.x, p.y);
-      return !t.glitch && !t.frag;
-    });
-    let best = safe[0], bd = -1;
-    safe.forEach(p => {
-      const d = Math.abs(p.x - S.player.x) + Math.abs(p.y - S.player.y) + (p.ws === targetWs ? 0 : 0);
-      if (d > bd) { bd = d; best = p; }
-    });
-    if (best) window.Tiling.tile(r, best.x, best.y).exit = true;
-    const msg = S.L.exitRoom ? 'Exit open in Room ' + S.L.exitRoom + ' 🚪' : 'Exit open 🚪';
-    toast(msg); log('<b>wm:</b> ' + msg);
+    const exitWin = T().makeWindow({ app: 'wlogout', title: 'exit session', exit: true });
+    if (T().leaves(r).length >= MAX_CLIENTS) {
+      const host = T().leaves(r).find(w => !w.glitch) || T().leaves(r)[0];
+      if (host) { host.exit = true; host.title = 'wlogout'; host.app = 'wlogout'; }
+    } else {
+      const keep = r.focused;
+      T().spawn(r, exitWin, bounds());
+      if (S.player.ws !== targetWs) r.focused = keep;
+    }
+    const msg = 'wlogout opened on workspace ' + targetWs;
+    toast(msg); dsp('exec wlogout');
   }
 
   function checkComplete() {
     if (!S || S.over) return;
-    const done = S.L.tasks.every(t => t.count >= t.need);
-    if (done) levelComplete();
+    if (S.L.tasks.every(t => t.count >= t.need)) levelComplete();
   }
 
   function levelComplete() {
     S.over = true; S.paused = true;
     window.Sfx.good();
     const last = S.levelIdx >= window.LEVELS.length - 1;
-    showEnd(true, last ? 'System secured — you think in tiles now.' : S.L.name + ' cleared.');
+    showEnd(true, last ? 'Session locked in. You think in dwindle trees now.' : S.L.name + ' cleared.');
   }
 
   function died(reason) {
@@ -270,41 +155,208 @@
   }
 
   function showEnd(won, sub) {
+    $('overlay-help').classList.add('hidden');
+    $('overlay-launch').classList.add('hidden');
     $('overlay-end').classList.remove('hidden');
-    $('end-title').textContent = won ? '◈ Room survived' : '▓ Window closed by The Shrink';
+    $('end-title').textContent = won ? '◈ Session survived' : '▓ killactive — The Shrink';
     $('end-sub').textContent = sub;
     const acc = Object.keys(S.uses).map(k => {
       const u = S.uses[k], f = S.fails[k] || 0;
       return k + ': ' + (u - f) + '/' + u + ' clean';
-    }).join('\n') || 'no shortcuts used?!';
-    const hint = S.hp <= 0 ? 'Tip: don\'t stand on red — Super+Arrows early, Super+2 to flee.' : 'Tip: press Super+K anytime to review.';
+    }).join('\n') || 'no dispatchers fired';
+    const hint = S.hp <= 0
+      ? 'Tip: unused windows rot. Super+Arrows to cycle, Super+2 to flee, Super+W to kill leaks.'
+      : 'Tip: Super+K anytime. Super+Enter splits. Super+J togglesplit.';
     $('end-stats').textContent = S.L.name + ' · ' + Math.floor(S.time) + 's · HP ' + Math.max(0, Math.round(S.hp)) +
-      '\n' + acc + '\n' + hint;
+      ' · combo best ×' + (S.comboBest || 0) + '\n' + acc + '\n' + hint;
     $('btn-next').textContent = (S.levelIdx >= window.LEVELS.length - 1) ? 'Replay L6' : 'Next →';
   }
 
-  // ---------- public shortcut entry ----------
-  function handleShortcut(m) {
-    if (!S) return;
-    if (!$('overlay-title').classList.contains('hidden') && m.act !== 'help') {
-      // allow starting via keyboard? require button for calibration honesty
+  // ---------- dispatchers ----------
+  function doFocus(dir) {
+    const r = curRoom();
+    if (!T().leaves(r).length) {
+      use('focus', false); window.Sfx.bad();
+      toast('Empty workspace — Super+Enter to exec kitty');
       return;
     }
+    const n = T().focusDir(r, dir, bounds(), S.time);
+    if (!n) {
+      use('focus', false); window.Sfx.bad();
+      toast('No client ' + dir + ' — Super+1–4 to change workspace');
+      return;
+    }
+    use('focus', true); window.Sfx.move();
+    dsp('movefocus ' + dir[0]);
+    const mv = S.L.tasks.find(t => t.id === 'move4');
+    if (mv && mv.count < mv.need) bumpTask('move4');
+    afterFocus();
+  }
+
+  function doSwap(dir) {
+    const r = curRoom();
+    const face = dir || 'right';
+    const neighbor = T().neighbor(r, face, bounds());
+    const hadGlitch = !!(neighbor && neighbor.glitch);
+    const ok = T().swapDir(r, face, bounds());
+    if (!ok) {
+      use('swap', false); window.Sfx.bad();
+      toast('Nothing to swap ' + face + ' — face a neighbor first');
+      return;
+    }
+    use('swap', true); window.Sfx.jump();
+    dsp('swapwindow ' + face[0]);
+    if (hadGlitch) bumpTask('swap');
+    else if (S.L.tasks.find(t => t.id === 'swap') && S.L.tasks.find(t => t.id === 'swap').count < 1) {
+      toast('Swapped — aim at the leaky client (dashed border)');
+    }
+    afterFocus();
+  }
+
+  function gotoRoom(ws, viaCarry) {
+    if (!S.rooms[ws]) {
+      use(viaCarry ? 'carry' : 'goto', false); window.Sfx.bad();
+      toast('Workspace ' + ws + ' not in this session');
+      return;
+    }
+    const from = S.player.ws;
+    const src = S.rooms[from];
+    if (viaCarry) {
+      const moving = T().focused(src);
+      if (!moving) {
+        use('carry', false); window.Sfx.bad();
+        toast('No focused window to move');
+        return;
+      }
+      if (from === ws) {
+        use('carry', false); toast('Already on workspace ' + ws);
+        return;
+      }
+      const hadFrag = moving.frag || S.fragsGot > 0;
+      T().moveWindow(src, S.rooms[ws], moving.id, { follow: true, bounds: bounds() });
+      S.player.ws = ws;
+      use('carry', true); window.Sfx.jump();
+      dsp('movetoworkspace ' + ws);
+      if (hadFrag) bumpTask('carry');
+      else toast('Moved the window — grab ◆ first for full credit');
+      if (from !== ws) bumpTask('jump');
+      S.collapseT = 0;
+      afterFocus();
+      return;
+    }
+    S.player.ws = ws;
+    S.collapseT = 0;
+    use('goto', true); window.Sfx.jump();
+    dsp('workspace ' + ws);
+    if (from !== ws) bumpTask('jump');
+    else toast('Already on workspace ' + ws);
+    afterFocus();
+  }
+
+  function doClose() {
+    const r = curRoom();
+    const w = T().focused(r);
+    if (!w) {
+      use('close', false); window.Sfx.bad();
+      toast('Empty workspace — Super+Enter to spawn');
+      return;
+    }
+    if (w.frag) {
+      w.frag = false; S.fragsGot++;
+      bumpTask('frag');
+      if (S.fragsGot >= S.fragsTotal && S.L.tasks.some(t => t.id === 'exit')) placeExit();
+    }
+    const wasGlitch = w.glitch;
+    const wasExit = w.exit;
+    T().close(r, w.id);
+    use('close', true); window.Sfx.good();
+    dsp('killactive');
+    if (wasGlitch) bumpTask('swap');
+    if (wasExit) bumpTask('exit');
+    toast(wasGlitch ? 'Leaked client killed — tree reflowed' : 'killactive — layout reflowed');
+    afterFocus();
+  }
+
+  function doSpawn() {
+    if (S.energy < 25) { use('spawn', false); window.Sfx.bad(); toast('Not enough ⚡ (need 25)'); return; }
+    const r = curRoom();
+    if (T().leaves(r).length >= MAX_CLIENTS) {
+      use('spawn', false); window.Sfx.bad(); toast('Workspace packed (8 clients) — Super+W to close one');
+      return;
+    }
+    const prev = T().focused(r);
+    let repaired = false;
+    if (prev && prev.corrupt) { prev.corrupt = false; repaired = true; }
+    S.energy -= 25;
+    const n = T().leaves(r).length + 1;
+    T().spawn(r, T().makeWindow({ app: 'kitty', title: 'tty' + n }), bounds());
+    use('spawn', true); window.Sfx.good();
+    dsp('exec kitty');
+    toast(repaired ? 'kitty tiled — repaired the pane you split' : 'kitty tiled — dwindle split the focused pane');
+    bumpTask('spawn');
+    afterFocus();
+  }
+
+  function doSplit() {
+    const r = curRoom();
+    if (r.layout === 'scrolling') {
+      use('split', false); window.Sfx.bad();
+      toast('togglesplit is dwindle-only — Super+L back to dwindle');
+      return;
+    }
+    const ok = T().toggleSplit(r);
+    if (!ok) {
+      use('split', false); window.Sfx.bad();
+      toast('Need two clients to togglesplit — Super+Enter');
+      return;
+    }
+    use('split', true); window.Sfx.jump();
+    dsp('layoutmsg togglesplit');
+    toast('togglesplit — stacked ↔ side');
+    bumpTask('split');
+    renderAll();
+  }
+
+  function doShield() {
+    if (S.shieldCD > 0) { use('shield', false); toast('Fullscreen cooldown ' + Math.ceil(S.shieldCD) + 's'); window.Sfx.bad(); return; }
+    const w = T().focused(curRoom());
+    if (!w) { use('shield', false); window.Sfx.bad(); toast('No window to fullscreen'); return; }
+    S.shieldT = 3; S.shieldCD = 20;
+    use('shield', true); bumpTask('fullscreen'); bumpTask('util'); window.Sfx.good();
+    dsp('fullscreen 0');
+    toast('Fullscreen — Shrink paused 3s');
+    renderAll();
+  }
+
+  function doLayout() {
+    const r = curRoom();
+    const next = r.layout === 'dwindle' ? 'scrolling' : 'dwindle';
+    T().setLayout(r, next);
+    if (next === 'scrolling') { S.scrollT = 10; S.scrollCD = 25; }
+    use('layout', true); bumpTask('layout'); bumpTask('util'); window.Sfx.jump();
+    dsp('exec omarchy-workspace-layout-toggle');
+    toast('Layout → ' + next + (next === 'scrolling' ? ' (Shrink slowed 10s)' : ''));
+    renderAll();
+  }
+
+  function handleShortcut(m) {
+    if (!S) return;
+    if (!$('overlay-title').classList.contains('hidden') && m.act !== 'help') return;
     if (m.act === 'help') { toggleHelp(); if (S) { use('help', true); bumpTask('help'); } return; }
     if (!$('overlay-help').classList.contains('hidden')) { toggleHelp(); return; }
-    if (!$('overlay-launch').classList.contains('hidden')) return; // typing
+    if (!$('overlay-launch').classList.contains('hidden')) return;
     if (!$('overlay-end').classList.contains('hidden')) return;
     if (S.over || S.paused) return;
 
     switch (m.act) {
       case 'focus': doFocus(m.dir); break;
-      case 'focus-cycle': doFocus(S.player.face === 'right' ? 'down' : 'right'); toast('Pad: used focus ' + S.player.face + ' (real: Super+Arrow)'); break;
+      case 'focus-cycle': doFocus('right'); toast('Pad: movefocus r (real: Super+Arrow)'); break;
       case 'swap': doSwap(m.dir); break;
-      case 'swap-fwd': doSwap(S.player.face); break;
+      case 'swap-fwd': doSwap('right'); break;
       case 'goto': gotoRoom(m.ws, false); break;
       case 'carry': gotoRoom(m.ws, true); break;
       case 'next': case 'prev': {
-        const rooms = S.L.rooms.slice().sort();
+        const rooms = S.L.rooms.slice().sort((a, b) => a - b);
         let i = rooms.indexOf(S.player.ws);
         i = m.act === 'next' ? (i + 1) % rooms.length : (i - 1 + rooms.length) % rooms.length;
         gotoRoom(rooms[i], false);
@@ -334,6 +386,7 @@
     inp.value = '';
     setTimeout(() => inp.focus(), 0);
     window.Sfx.jump();
+    dsp('exec omarchy-launch-walker');
   }
   function onEscape() {
     if (!S) { $('overlay-help').classList.add('hidden'); $('overlay-launch').classList.add('hidden'); return; }
@@ -348,6 +401,19 @@
     else toast('Launcher: type 1–4');
   }
 
+  function focusClient(id) {
+    if (!S || S.over || S.paused) return;
+    const r = curRoom();
+    const w = T().leaves(r).find(x => x.id === id);
+    if (!w) return;
+    T().focus(r, w, S.time);
+    use('focus', true); window.Sfx.move();
+    dsp('movefocus (click)');
+    const mv = S.L.tasks.find(t => t.id === 'move4');
+    if (mv && mv.count < mv.need) bumpTask('move4');
+    afterFocus();
+  }
+
   // ---------- loop ----------
   let lastT = 0;
   function loop(ts) {
@@ -356,48 +422,70 @@
     const dt = Math.min(0.1, (ts - lastT) / 1000 || 0.016);
     lastT = ts;
     S.time += dt;
-    // cooldowns
     if (S.shieldT > 0) S.shieldT -= dt;
     if (S.shieldCD > 0) S.shieldCD -= dt;
     if (S.scrollT > 0) S.scrollT -= dt;
     if (S.scrollCD > 0) S.scrollCD -= dt;
-    S.energy = Math.min(100, S.energy + 6 * dt);
-    // collapse
+    S.energy = Math.min(100, S.energy + (6 + Math.min(8, S.combo)) * dt);
+
     const L = S.L;
     if (L.collapseEvery > 0 && S.shieldT <= 0) {
-      const speed = S.scrollT > 0 ? 0.5 : 1;
+      const speed = (S.scrollT > 0 ? 0.5 : 1) * (S.combo >= 4 ? 0.75 : 1);
       S.collapseT += dt * speed;
       if (S.collapseT >= L.collapseEvery) {
         S.collapseT = 0;
         S.tickCount++;
-        // current room always; others every 2nd tick (pressure follows you, home still rots)
         Object.values(S.rooms).forEach(r => {
           if (!L.rooms.includes(r.id)) return;
           if (r.id === S.player.ws || S.tickCount % 2 === 0) {
-            const n = window.Tiling.collapseStep(r);
-            if (n > 0 && r.id === S.player.ws) { window.Sfx.alarm(); log('<b>shrink:</b> room ' + r.id + ' lost ' + n + ' tiles'); }
+            const victim = T().corruptOldest(r);
+            if (victim && r.id === S.player.ws) {
+              window.Sfx.alarm();
+              log('<b>shrink:</b> ' + victim.app + ' ' + (victim.glitch ? 'forked' : 'corrupted'));
+            }
+            const glitches = T().leaves(r).filter(w => w.glitch);
+            if (glitches.length && T().leaves(r).length < MAX_CLIENTS && S.tickCount % 3 === 0 && r.id === S.player.ws) {
+              const keep = r.focused;
+              T().spawn(r, T().makeWindow({ app: 'zsh', title: 'fork-' + S.tickCount, glitch: true }), bounds());
+              r.focused = keep;
+              if (r.id === S.player.ws) toast('Leaky client forked — Super+W');
+            }
           }
         });
-        // doom markers
       }
     }
-    // damage / regen
-    const t = window.Tiling.tile(curRoom(), S.player.x, S.player.y);
-    if (t && t.corrupt) {
-      S.hp -= 18 * dt;
-      if (Math.random() < dt * 4) window.Sfx.bad();
-      if (S.hp <= 0) { S.hp = 0; renderAll(); died('You stood in corruption too long. Flee earlier: Super+Arrows, Super+2.'); return; }
+
+    const r = curRoom();
+    const f = T().focused(r);
+    if (!f) {
+      S.hp -= 6 * dt;
+    } else if (f.glitch) {
+      S.hp -= 20 * dt;
+      if (Math.random() < dt * 5) window.Sfx.bad();
+    } else if (f.corrupt) {
+      S.hp -= 16 * dt;
+      if (Math.random() < dt * 3) window.Sfx.bad();
     } else {
       S.hp = Math.min(100, S.hp + 2 * dt);
     }
+    if (S.hp <= 0) {
+      S.hp = 0; renderAll();
+      died(!f
+        ? 'Empty workspace. Super+Enter to spawn, Super+2 to flee.'
+        : (f.glitch
+          ? 'You stayed on a leaky client. Super+W killactive, or Super+Arrows off it.'
+          : 'You stayed on a rotting window. Cycle focus, spawn a clean kitty, or jump workspaces.'));
+      return;
+    }
     renderHUD(dt);
-    // clock
-    const mm = String(Math.floor(S.time / 60)).padStart(2, '0'), ss = String(Math.floor(S.time % 60)).padStart(2, '0');
+    const mm = String(Math.floor(S.time / 60)).padStart(2, '0');
+    const ss = String(Math.floor(S.time % 60)).padStart(2, '0');
     $('clock').textContent = mm + ':' + ss;
   }
 
   // ---------- render ----------
   function renderAll() { renderBoard(); renderHUD(0); renderTasks(); renderWsBar(); }
+
   function renderWsBar() {
     document.querySelectorAll('#workspaces .ws').forEach(b => {
       const ws = +b.dataset.ws;
@@ -407,72 +495,136 @@
       const r = S && S.rooms[ws];
       let dots = '';
       if (r && inLevel) {
-        const total = r.cols * r.rows;
-        const bad = r.tiles.flat().filter(t => t.corrupt).length;
-        const pct = bad / total;
-        b.classList.toggle('doom', pct > 0.5);
-        const f = r.tiles.flat().filter(t => t.frag).length;
-        dots = '◆'.repeat(f) + (S.player.ws === ws ? ' ◉' : '');
+        const wins = T().leaves(r);
+        const bad = wins.filter(w => w.corrupt || w.glitch).length;
+        b.classList.toggle('doom', wins.length && bad / Math.max(1, wins.length) > 0.5);
+        b.classList.toggle('occupied', wins.length > 0);
+        const f = wins.filter(w => w.frag).length;
+        dots = (wins.length ? String(wins.length) : '·') + (f ? ' ◆' : '') + (S.player.ws === ws ? '' : '');
       }
       b.querySelector('.ws-dots').textContent = dots;
     });
     if (S) {
-      $('layout-badge').textContent = curRoom().layout;
-      $('split-badge').textContent = 'split: ' + (curRoom().split === 'h' ? '══ horizontal' : '║ vertical');
-      $('room-name').textContent = 'Room ' + S.player.ws + ' — Workspace ' + S.player.ws + ' · ' + S.L.name;
+      const r = curRoom();
+      const f = T().focused(r);
+      $('layout-badge').textContent = r.layout;
+      $('split-badge').textContent = r.layout === 'scrolling' ? 'scrolling row' : 'dwindle bsp';
+      $('room-name').textContent = 'workspace ' + S.player.ws + ' · ' + S.L.name;
+      const wt = $('win-title');
+      if (wt) wt.textContent = f ? (f.app + '  —  ' + f.title) : '(empty workspace)';
     }
   }
+
+  function clientBody(win) {
+    if (win.glitch) {
+      return '<pre class="noise">SIGSEGV in wayland\n0x7fff' + win.id + '\nleak leak leak\n&lt;defunct&gt;</pre>';
+    }
+    if (win.exit) {
+      return '<div class="exit-body"><div class="exit-mark">⏻</div><div>wlogout</div><div class="dim">focus to end session</div></div>';
+    }
+    const bodies = {
+      kitty: '<pre>avi@omarchy:~$\n<span class="acc">❯</span> </pre>',
+      nvim: '<pre><span class="ln"> 1</span> <span class="kw">dwindle</span> {\n<span class="ln"> 2</span>   preserve_split = <span class="acc">true</span>\n<span class="ln"> 3</span> }</pre>',
+      chromium: '<div class="chrome"><div class="url">https://omarchy.org</div><div class="page">Omarchy · Hyprland desktop</div></div>',
+      btop: '<pre>cpu  <span class="bar"></span> 34%\nmem  <span class="bar dim"></span> 61%\n<span class="acc">●</span> hyprland</pre>',
+      yazi: '<pre>~/ \n  hypr/\n  <span class="acc">key.frag</span>\n  bin/</pre>',
+      signal: '<pre>Signal\n  · 2 unread</pre>',
+      spotify: '<pre>Spotify\n▶ tiling playlist</pre>',
+      obsidian: '<pre># notes\n- Super+J togglesplit</pre>',
+      wlogout: '<div class="exit-body"><div class="exit-mark">⏻</div><div>wlogout</div></div>',
+      zsh: '<pre>zsh: abort</pre>',
+    };
+    let html = bodies[win.app] || ('<pre>' + win.app + '</pre>');
+    if (win.corrupt) html = '<pre class="rot">I/O error\nclient unresponsive\nSuper+Enter to respawn</pre>';
+    return html;
+  }
+
   function renderBoard() {
     const board = $('board');
     const r = curRoom();
-    board.style.setProperty('--cols', r.cols);
-    board.style.setProperty('--rows', r.rows);
+    const empty = $('empty-ws');
+    const wins = T().leaves(r);
     board.classList.toggle('shield', S.shieldT > 0);
-    board.classList.toggle('scrolling', S.scrollT > 0);
-    board.innerHTML = '';
-    for (let y = 0; y < r.rows; y++) for (let x = 0; x < r.cols; x++) {
-      const t = r.tiles[y][x];
-      const d = document.createElement('div');
-      d.className = 'tile' + (t.corrupt ? ' corrupt' : '') + (t.exit ? ' exit' : '') + (t.glitch ? ' glitch-tile' : '');
-      if (S.player.x === x && S.player.y === y) d.classList.add('player');
-      d.setAttribute('role', 'gridcell');
-      let s = '';
-      if (S.player.x === x && S.player.y === y) s += '◉';
-      if (t.glitch) s += '👾';
-      else if (t.frag) s += '◆';
-      else if (t.exit) s += '🚪';
-      else if (t.corrupt) s += '▓';
-      d.textContent = s;
-      board.appendChild(d);
+    board.classList.toggle('scrolling', r.layout === 'scrolling' || S.scrollT > 0);
+    if (empty) empty.classList.toggle('hidden', wins.length > 0);
+
+    const existing = new Map();
+    board.querySelectorAll('.client').forEach(el => existing.set(el.dataset.id, el));
+
+    let boxes;
+    const b = bounds();
+    if (S.shieldT > 0 && T().focused(r)) {
+      const f = T().focused(r);
+      boxes = [{ win: f, x: 0, y: 0, w: b.w, h: b.h }];
+    } else {
+      boxes = T().layoutBoxes(r, b);
     }
+
+    const seen = new Set();
+    boxes.forEach(box => {
+      const win = box.win;
+      seen.add(win.id);
+      let el = existing.get(win.id);
+      if (!el) {
+        el = document.createElement('article');
+        el.className = 'client';
+        el.dataset.id = win.id;
+        el.setAttribute('role', 'group');
+        board.appendChild(el);
+      }
+      el.classList.toggle('focused', r.focused === win.id);
+      el.classList.toggle('corrupt', !!win.corrupt && !win.glitch);
+      el.classList.toggle('glitch', !!win.glitch);
+      el.classList.toggle('exit', !!win.exit);
+      el.classList.toggle('has-frag', !!win.frag);
+      el.style.left = (box.x / b.w * 100) + '%';
+      el.style.top = (box.y / b.h * 100) + '%';
+      el.style.width = (box.w / b.w * 100) + '%';
+      el.style.height = (box.h / b.h * 100) + '%';
+      const badge = win.frag ? '<span class="frag-badge" title="key fragment">◆</span>' : '';
+      el.innerHTML =
+        '<header class="client-bar"><span class="app">' + win.app + '</span>' +
+        '<span class="title">' + win.title + '</span>' + badge + '</header>' +
+        '<div class="client-body">' + clientBody(win) + '</div>';
+    });
+    existing.forEach((el, id) => { if (!seen.has(id)) el.remove(); });
   }
+
   function renderHUD(dt) {
     if (!S) return;
     $('hp').textContent = Math.max(0, Math.round(S.hp));
     $('energy').textContent = Math.round(S.energy);
     $('frags').textContent = S.fragsGot + '/' + S.fragsTotal;
+    const combo = $('combo');
+    if (combo) {
+      combo.textContent = S.combo >= 2 ? '×' + S.combo : '';
+      combo.classList.toggle('hot', S.combo >= 4);
+    }
     const L = S.L;
     const pct = L.collapseEvery > 0 ? Math.min(100, (S.collapseT / L.collapseEvery) * 100) : 0;
     $('collapse-bar').style.width = pct + '%';
-    if ((S._wsT = (S._wsT || 0) + (dt || 0)) > 0.5 || !dt) { renderWsBar(); S._wsT = 0; }
-    if (S.shieldCD > 0 || S.shieldT > 0) { /* could show */ }
+    if ((S._wsT = (S._wsT || 0) + (dt || 0)) > 0.4 || !dt) { renderWsBar(); S._wsT = 0; }
   }
 
-  // ---------- wire ----------
   window.addEventListener('DOMContentLoaded', () => {
     $('btn-start').addEventListener('click', () => { newGame(0); });
     $('btn-how').addEventListener('click', () => $('how-text').classList.toggle('hidden'));
-    $('btn-close-help').addEventListener('click', toggleHelp);
-    $('btn-help').addEventListener('click', toggleHelp);
+    $('btn-close-help').addEventListener('click', () => handleShortcut({ act: 'help' }));
+    $('btn-help').addEventListener('click', () => handleShortcut({ act: 'help' }));
     $('btn-mute').addEventListener('click', (e) => {
       const m = window.Sfx.toggleMute();
-      e.target.textContent = m ? '🔇' : '🔊';
+      e.target.textContent = m ? 'sound off' : 'sound on';
     });
     $('btn-next').addEventListener('click', () => {
       const n = S.levelIdx >= window.LEVELS.length - 1 ? window.LEVELS.length - 1 : S.levelIdx + 1;
       newGame(n);
     });
     $('btn-retry').addEventListener('click', () => newGame(S.levelIdx));
+    $('board').addEventListener('click', (e) => {
+      const el = e.target.closest('.client');
+      if (el) focusClient(el.dataset.id);
+    });
+    window.addEventListener('resize', () => { if (S && !S.over) renderBoard(); });
     requestAnimationFrame(loop);
   });
 

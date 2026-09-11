@@ -125,7 +125,12 @@
         const g = Game(); if (!g) return;
         const a = b.dataset.act;
         const map = {
-          'focus-up': { act: 'focus-cycle' }, swap: { act: 'swap-fwd' },
+          'focus-left': { act: 'focus', dir: 'left' },
+          'focus-right': { act: 'focus', dir: 'right' },
+          'focus-up': { act: 'focus', dir: 'up' },
+          'focus-down': { act: 'focus', dir: 'down' },
+          'focus-cycle': { act: 'focus-cycle' },
+          swap: { act: 'swap-fwd' },
           ws1: { act: 'goto', ws: 1 }, ws2: { act: 'goto', ws: 2 },
           ws3: { act: 'goto', ws: 3 }, ws4: { act: 'goto', ws: 4 },
           'carry1': { act: 'carry', ws: 1 }, 'carry2': { act: 'carry', ws: 2 },
