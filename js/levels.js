@@ -18,7 +18,7 @@
       ]
     },
     {
-      id: 1, name: 'L1 — Unused windows rot', collapseEvery: 7.2,
+      id: 1, name: 'L1 — Unused windows rot', collapseEvery: 14,
       rooms: [1], startWs: 1,
       setup: {
         1: [
@@ -34,7 +34,7 @@
       ]
     },
     {
-      id: 2, name: 'L2 — Kill or swap', collapseEvery: 8.5,
+      id: 2, name: 'L2 — Kill or swap', collapseEvery: 16,
       rooms: [1], startWs: 1,
       setup: {
         1: [
@@ -51,7 +51,7 @@
       ]
     },
     {
-      id: 3, name: 'L3 — Jump workspace', collapseEvery: 5.2,
+      id: 3, name: 'L3 — Jump workspace', collapseEvery: 12,
       rooms: [1, 2], startWs: 1,
       setup: {
         1: [
@@ -71,7 +71,7 @@
       ]
     },
     {
-      id: 4, name: 'L4 — movetoworkspace', collapseEvery: 6.8,
+      id: 4, name: 'L4 — movetoworkspace', collapseEvery: 14,
       rooms: [1, 2], startWs: 1, exitRoom: 2,
       setup: {
         1: [
@@ -90,7 +90,7 @@
       ]
     },
     {
-      id: 5, name: 'L5 — Spawn & togglesplit', collapseEvery: 6.8,
+      id: 5, name: 'L5 — Spawn & togglesplit', collapseEvery: 14,
       rooms: [1], startWs: 1,
       setup: {
         1: [
@@ -108,7 +108,7 @@
       ]
     },
     {
-      id: 6, name: 'L6 — Full session', collapseEvery: 5.6,
+      id: 6, name: 'L6 — Full session', collapseEvery: 12,
       rooms: [1, 2, 3, 4], startWs: 1, exitRoom: 4,
       setup: {
         1: [

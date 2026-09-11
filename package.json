@@ -1,11 +1,13 @@
 {
   "name": "omarchy-escape",
-  "version": "1.0.0",
-  "description": "Omarchy tiling-shortcuts survival trainer (Electron native wrapper)",
-  "main": "main.js",
+  "version": "1.2.0",
+  "description": "Omarchy tiling-shortcuts survival trainer (native GTK/WebKit host)",
+  "main": "omarchy-escape",
   "scripts": {
-    "start": "electron .",
-    "test": "node --check main.js && node --check preload.js && for f in js/*.js; do node --check \"$f\"; done && node test/tiling.test.js"
+    "start": "./omarchy-escape",
+    "install-omarchy": "./install.sh",
+    "electron": "electron .",
+    "test": "node --check main.js && node --check preload.js && for f in js/*.js; do node --check \"$f\"; done && node test/tiling.test.js && python3 -m py_compile omarchy-escape"
   },
   "devDependencies": {
     "electron": "^34.0.0"

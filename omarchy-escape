@@ -1,0 +1,404 @@
+#!/usr/bin/env python3
+"""Omarchy Escape — native GTK3 + WebKitGTK host.
+
+Runs the trainer as a real Wayland client (app-id org.omarchy.escape).
+While the window is focused, Hyprland enters the omarchy-escape submap so
+Super combos reach this process instead of the compositor.
+
+Unlock Super from the UI (or Super+Escape) so Hyprland owns Super again;
+Super+W then closes this window.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("WebKit2", "4.1")
+from gi.repository import Gdk, Gio, GLib, Gtk, WebKit2  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent
+INDEX = ROOT / "index.html"
+APP_ID = "org.omarchy.escape"
+TITLE = "Omarchy Escape"
+STATE_DIR = Path.home() / ".local/state/omarchy-escape"
+UNLOCK_FLAG = STATE_DIR / "super-unlocked"
+
+# GDK key names → trainer payloads. Super/Alt is required by the handler.
+KEY_MAP = {
+    "Left": ("focus", "left"),
+    "Right": ("focus", "right"),
+    "Up": ("focus", "up"),
+    "Down": ("focus", "down"),
+    "KP_Left": ("focus", "left"),
+    "KP_Right": ("focus", "right"),
+    "KP_Up": ("focus", "up"),
+    "KP_Down": ("focus", "down"),
+    "j": ("split", None),
+    "J": ("split", None),
+    "f": ("fullscreen", None),
+    "F": ("fullscreen", None),
+    "w": ("close", None),
+    "W": ("close", None),
+    "k": ("help", None),
+    "K": ("help", None),
+    "l": ("layout", None),
+    "L": ("layout", None),
+    "Return": ("spawn", None),
+    "KP_Enter": ("spawn", None),
+    "space": ("launcher", None),
+    "spacebar": ("launcher", None),
+    "Tab": ("next", None),
+    "ISO_Left_Tab": ("prev", None),
+    "1": ("goto", 1),
+    "2": ("goto", 2),
+    "3": ("goto", 3),
+    "4": ("goto", 4),
+    "KP_1": ("goto", 1),
+    "KP_2": ("goto", 2),
+    "KP_3": ("goto", 3),
+    "KP_4": ("goto", 4),
+}
+
+SHIFT_SWAP = {
+    "focus": "swap",
+    "goto": "carry",
+    "next": "prev",
+}
+
+NATIVE_BOOTSTRAP = """
+window.OmarchyNative={
+  platform:'omarchy',
+  compositor:'hyprland',
+  superGrabbed:true,
+  dispatch:function(m){if(window.__omarchyDispatch)window.__omarchyDispatch(m);},
+  unlockSuper:function(){try{window.webkit.messageHandlers.omarchy.postMessage('unlockSuper');}catch(e){}},
+  lockSuper:function(){try{window.webkit.messageHandlers.omarchy.postMessage('lockSuper');}catch(e){}},
+  quit:function(){try{window.webkit.messageHandlers.omarchy.postMessage('quit');}catch(e){}}
+};
+document.documentElement.classList.add('omarchy-native');
+"""
+
+
+def theme_colors() -> dict[str, str]:
+    candidates = []
+    current = Path.home() / ".config/omarchy/current/theme/colors.toml"
+    candidates.append(current)
+    try:
+        name = subprocess.check_output(
+            ["omarchy", "theme", "current"], text=True, stderr=subprocess.DEVNULL
+        ).strip().lower().replace(" ", "-")
+        share = Path("/usr/share/omarchy/themes") / name / "colors.toml"
+        candidates.append(share)
+        user = Path.home() / ".config/omarchy/themes" / name / "colors.toml"
+        candidates.append(user)
+    except Exception:
+        pass
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            import tomllib
+
+            with path.open("rb") as fh:
+                data = tomllib.load(fh)
+            return {str(k): str(v) for k, v in data.items() if isinstance(v, str)}
+        except Exception:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            out = {}
+            for line in text.splitlines():
+                m = re.match(r'^\s*([A-Za-z0-9_]+)\s*=\s*"([^"]+)"', line)
+                if m:
+                    out[m.group(1)] = m.group(2)
+            if out:
+                return out
+    return {}
+
+
+def theme_css(colors: dict[str, str]) -> str:
+    bg = colors.get("background", "#101315")
+    bg2 = colors.get("dark_background", "#0c0e10")
+    panel = colors.get("lighter_background", colors.get("selection", "#343d41"))
+    txt = colors.get("foreground", "#cacccc")
+    dim = colors.get("muted", colors.get("dark_foreground", "#4b4e55"))
+    acc = colors.get("accent", colors.get("blue", "#798186"))
+    acc2 = colors.get("green", colors.get("cyan", "#9fa5a9"))
+    danger = colors.get("bright_red", "#de6145")
+    warn = colors.get("bright_yellow", "#c9c2b4")
+    ok = colors.get("bright_green", colors.get("green", "#3ee08a"))
+    line = colors.get("selection", "#343d41")
+    client = colors.get("darker_background", bg2)
+    return (
+        ":root{"
+        f"--bg:{bg};--panel:{panel};--line:{line};--txt:{txt};--dim:{dim};"
+        f"--acc:{acc};--acc2:{acc2};--danger:{danger};--warn:{warn};--ok:{ok};"
+        f"--client:{client};"
+        "}"
+        "html,body{background:" + bg2 + ";}"
+    )
+
+
+def payload_for(key_name: str, shift: bool) -> dict | None:
+    mapped = KEY_MAP.get(key_name)
+    if not mapped:
+        return None
+    act, extra = mapped
+    if shift and act in SHIFT_SWAP:
+        act = SHIFT_SWAP[act]
+    msg: dict = {"act": act, "fromNative": True}
+    if act in ("focus", "swap") and extra:
+        msg["dir"] = extra
+    if act in ("goto", "carry") and extra:
+        msg["ws"] = extra
+    return msg
+
+
+def hypr_eval(code: str) -> None:
+    try:
+        subprocess.run(
+            ["hyprctl", "eval", code],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=1,
+        )
+    except Exception:
+        pass
+
+
+def set_unlock_flag(unlocked: bool) -> None:
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        if unlocked:
+            UNLOCK_FLAG.write_text("1\n", encoding="utf-8")
+        elif UNLOCK_FLAG.exists():
+            UNLOCK_FLAG.unlink()
+    except Exception:
+        pass
+
+
+class EscapeApp(Gtk.Application):
+    def __init__(self) -> None:
+        flags = getattr(Gio.ApplicationFlags, "DEFAULT_FLAGS", Gio.ApplicationFlags.FLAGS_NONE)
+        super().__init__(application_id=APP_ID, flags=flags)
+        self.win: Gtk.ApplicationWindow | None = None
+        self.webview: WebKit2.WebView | None = None
+        self._colors = theme_colors()
+        self._ui_unlocked: bool | None = None
+
+    def do_activate(self) -> None:  # noqa: N802
+        if self.win:
+            self.win.present()
+            return
+        set_unlock_flag(False)
+        self.win = Gtk.ApplicationWindow(application=self, title=TITLE)
+        self.win.set_default_size(1280, 860)
+        self.win.set_name("omarchy-escape")
+
+        web_context = WebKit2.WebContext.get_default()
+        try:
+            web_context.set_sandbox_enabled(False)
+        except Exception:
+            pass
+
+        ucm = WebKit2.UserContentManager()
+        ucm.connect("script-message-received::omarchy", self._on_js_message)
+        try:
+            ucm.register_script_message_handler("omarchy")
+        except Exception:
+            pass
+        ucm.add_script(
+            WebKit2.UserScript.new(
+                NATIVE_BOOTSTRAP,
+                WebKit2.UserContentInjectedFrames.ALL_FRAMES,
+                WebKit2.UserScriptInjectionTime.START,
+                None,
+                None,
+            )
+        )
+        css = theme_css(self._colors)
+        try:
+            ucm.add_style_sheet(
+                WebKit2.UserStyleSheet.new(
+                    css,
+                    WebKit2.UserContentInjectedFrames.ALL_FRAMES,
+                    WebKit2.UserStyleLevel.USER,
+                    None,
+                    None,
+                )
+            )
+        except Exception:
+            pass
+
+        self.webview = WebKit2.WebView.new_with_user_content_manager(ucm)
+        settings = self.webview.get_settings()
+        settings.set_enable_developer_extras(False)
+        settings.set_allow_file_access_from_file_urls(True)
+        settings.set_enable_javascript(True)
+        try:
+            settings.set_allow_universal_access_from_file_urls(True)
+        except Exception:
+            pass
+        try:
+            settings.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.ALWAYS)
+        except Exception:
+            pass
+
+        self.webview.connect("load-changed", self._on_load)
+        self.webview.load_uri(INDEX.resolve().as_uri())
+
+        self.win.add(self.webview)
+        self.win.connect("key-press-event", self._on_key)
+        self.win.connect("destroy", self._on_destroy)
+        self.win.show_all()
+        self.win.present()
+        GLib.timeout_add(400, self._poll_unlock_flag)
+
+    def _js(self, view: WebKit2.WebView, script: str) -> None:
+        if hasattr(view, "evaluate_javascript"):
+            view.evaluate_javascript(script, -1, None, None, None, None, None)
+        else:
+            view.run_javascript(script, None, None, None)
+
+    def _push_super_state(self, grabbed: bool) -> None:
+        if not self.webview:
+            return
+        self._js(
+            self.webview,
+            "window.__omarchySuperGrab && window.__omarchySuperGrab("
+            + ("true" if grabbed else "false")
+            + ");",
+        )
+
+    def _set_super_grab(self, grabbed: bool) -> None:
+        set_unlock_flag(not grabbed)
+        if grabbed:
+            hypr_eval('hl.dispatch(hl.dsp.submap("omarchy-escape"))')
+        else:
+            hypr_eval('hl.dispatch(hl.dsp.submap(""))')
+        self._ui_unlocked = not grabbed
+        self._push_super_state(grabbed)
+
+    def _poll_unlock_flag(self) -> bool:
+        unlocked = UNLOCK_FLAG.is_file()
+        if unlocked != self._ui_unlocked:
+            self._ui_unlocked = unlocked
+            self._push_super_state(not unlocked)
+        return True
+
+    def _on_destroy(self, *_args) -> None:
+        set_unlock_flag(False)
+        hypr_eval('hl.dispatch(hl.dsp.submap(""))')
+        self.quit()
+
+    def _js_message_text(self, result) -> str:
+        try:
+            val = result.get_js_value()
+        except Exception:
+            val = result
+        if val is None:
+            return ""
+        try:
+            if hasattr(val, "is_string") and val.is_string():
+                return val.to_string()
+        except Exception:
+            pass
+        try:
+            if hasattr(val, "to_string"):
+                return str(val.to_string())
+        except Exception:
+            pass
+        return str(val)
+
+    def _on_js_message(self, _manager, result) -> None:
+        cmd = (self._js_message_text(result) or "").strip()
+        if cmd == "unlockSuper":
+            self._set_super_grab(False)
+        elif cmd == "lockSuper":
+            self._set_super_grab(True)
+        elif cmd == "quit":
+            if self.win:
+                self.win.close()
+
+    def _on_load(self, view: WebKit2.WebView, event: WebKit2.LoadEvent) -> None:
+        if event != WebKit2.LoadEvent.FINISHED:
+            return
+        css = json.dumps(theme_css(self._colors))
+        js = (
+            "(function(){var s=document.getElementById('omarchy-theme');"
+            "if(!s){s=document.createElement('style');s.id='omarchy-theme';"
+            "document.documentElement.appendChild(s);}s.textContent=" + css + ";"
+            "document.documentElement.classList.add('omarchy-native');})();"
+        )
+        self._js(view, js)
+        self._push_super_state(not UNLOCK_FLAG.is_file())
+
+    def _inject(self, payload: dict) -> None:
+        if not self.webview:
+            return
+        js = (
+            "window.__omarchyDispatch && window.__omarchyDispatch("
+            + json.dumps(payload)
+            + ");"
+        )
+        self._js(self.webview, js)
+
+    def _on_key(self, _widget: Gtk.Widget, event: Gdk.EventKey) -> bool:
+        state = Gdk.ModifierType(event.state)
+        super_on = bool(
+            state
+            & (
+                Gdk.ModifierType.SUPER_MASK
+                | Gdk.ModifierType.MOD4_MASK
+                | Gdk.ModifierType.META_MASK
+            )
+        )
+        alt_on = bool(state & Gdk.ModifierType.MOD1_MASK)
+        shift_on = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        name = Gdk.keyval_name(Gdk.keyval_to_lower(event.keyval)) or ""
+        raw = Gdk.keyval_name(event.keyval) or name
+        if super_on and (name in ("Escape", "escape") or raw in ("Escape", "escape")):
+            self._set_super_grab(False)
+            return True
+        if super_on and UNLOCK_FLAG.is_file():
+            # Super belongs to Hyprland. If Super+W still reaches us, quit.
+            if name.lower() == "w" or raw.lower() == "w":
+                if self.win:
+                    self.win.close()
+                return True
+            return False
+        if not (super_on or alt_on):
+            return False
+        payload = payload_for(raw, shift_on) or payload_for(name, shift_on)
+        if not payload:
+            return False
+        if super_on:
+            payload["super"] = True
+        self._inject(payload)
+        return True
+
+
+def main() -> int:
+    if not INDEX.is_file():
+        print(f"omarchy-escape: missing {INDEX}", file=sys.stderr)
+        return 1
+    GLib.set_prgname(APP_ID)
+    try:
+        Gdk.set_program_class(APP_ID)
+    except Exception:
+        pass
+    os.chdir(ROOT)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    app = EscapeApp()
+    return app.run(sys.argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

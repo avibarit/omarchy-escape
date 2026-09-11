@@ -29,6 +29,8 @@
       <span id="clock">00:00</span>
       <button id="btn-help" type="button" title="Super+K">Super+K</button>
       <button id="btn-mute" type="button" title="toggle sound">sound on</button>
+      <button id="btn-super" class="native-only hidden" type="button" title="Release Super so Super+W closes this window">Unlock Super</button>
+      <button id="btn-quit" class="native-only hidden" type="button" title="Quit Omarchy Escape">Quit</button>
     </div>
   </header>
 
@@ -93,15 +95,15 @@
       <h1>◈ OMARCHY ESCAPE</h1>
       <p class="sub">A Hyprland session. The unused windows are rotting.</p>
       <div class="how">
-        <p>This trainer uses your real <kbd>Super</kbd> (Win/Cmd) key — the same Core 12 as Omarchy.</p>
+        <p>Native Omarchy window. While focused, real <kbd>Super</kbd> is yours — the same Core 12 as the desktop.</p>
         <ol>
           <li>You are the <b>focused client</b>. Hold <kbd>Super</kbd> + arrows to <code>movefocus</code>.</li>
           <li><kbd>Super</kbd>+<kbd>Enter</kbd> execs kitty and <b>splits</b> the focused pane (dwindle).</li>
           <li><kbd>Super</kbd>+<kbd>W</kbd> is <code>killactive</code> — the tree reflows.</li>
           <li><kbd>Super</kbd>+<kbd>K</kbd> anytime = cheat sheet.</li>
+          <li><b>Unlock Super</b> (or <kbd>Super</kbd>+<kbd>Escape</kbd>) gives Super back to Hyprland. Then <kbd>Super</kbd>+<kbd>W</kbd> closes this app.</li>
         </ol>
-        <p class="tiny">Browsers sometimes eat <kbd>Super</kbd>+<kbd>1/W/Tab/Space</kbd>.
-        If a combo doesn't register, hold <kbd>Alt</kbd> instead of <kbd>Super</kbd>, or click the Fallback pad / workspace pills.
+        <p class="tiny">If a chord doesn't register, hold <kbd>Alt</kbd> instead of <kbd>Super</kbd>, or click the Fallback pad / workspace pills.
         The HUD always teaches the true Omarchy binding.</p>
         <div id="calib">
           <p>Calibration: hold <kbd>Super</kbd> and press <kbd>→</kbd> now:</p>
@@ -111,6 +113,8 @@
       <div class="row">
         <button id="btn-start" class="primary" type="button">Start L0 — calibration →</button>
         <button id="btn-how" type="button">How The Shrink works</button>
+        <button id="btn-unlock-title" class="native-only hidden" type="button">Unlock Super</button>
+        <button id="btn-quit-title" class="native-only hidden" type="button">Quit</button>
       </div>
       <p id="how-text" class="hidden tiny">Every few seconds <b>The Shrink</b> corrupts the window you have focused least.
       A rotten focused client drains hp. Leaky clients (dashed) drain faster and can fork.
@@ -136,8 +140,12 @@
         <div><kbd>Super + Space</kbd><span>launcher (type 1–4)</span></div>
         <div><kbd>Super + L</kbd><span>dwindle ↔ scrolling</span></div>
         <div><kbd>Super + K</kbd><span>this sheet</span></div>
+        <div><kbd>Super + Escape</kbd><span>release Super — then Super+W closes the app</span></div>
       </div>
-      <div class="row"><button id="btn-close-help" class="primary" type="button">Resume (Super+K)</button></div>
+      <div class="row">
+        <button id="btn-close-help" class="primary" type="button">Resume (Super+K)</button>
+        <button id="btn-unlock-help" class="native-only hidden" type="button">Unlock Super</button>
+      </div>
     </div>
   </div>
 

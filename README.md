@@ -1,36 +1,36 @@
 # ◈ OMARCHY ESCAPE — Hyprland survival trainer
 
-Self-contained game (no deps, works via `file://`) that teaches the **Core 12 Omarchy/Hyprland tiling shortcuts** by putting you inside a real dwindle session:
+Self-contained game that teaches the **Core 12 Omarchy/Hyprland tiling shortcuts** by putting you inside a real dwindle session.
 
 You are the **focused window**. Workspaces are binary-tree layouts. `Super+Enter` splits the focused pane. `Super+W` kills it and the tree reflows. Unused clients rot. Leaky ones fork.
 
-## Run
+## Install on Omarchy
 
-**Native app (recommended — real Super works):**
+One line from GitHub (clones to `~/.local/share/omarchy-escape`):
 
-```
-npm install
-npm start
-```
-
-The Electron wrapper has no tabs and no close-tab binding, so `Super+1..4`,
-`Super+W/F/J/K/L`, `Super+Arrows` etc. reach the game directly. Shortcuts are
-also registered as system hotkeys while the window is focused and forwarded
-over IPC (renderer dedups the echo).
-
-Still OS-reserved — use the Fallback pad for these: macOS `Cmd+Tab`
-(app switcher), `Cmd+Space` (Spotlight). Same story on Omarchy/Hyprland
-itself: the compositor grabs `Super+...` before any client sees it.
-
-**Browser fallback (no install):**
-
-Open `index.html` in Chrome/Firefox. No server needed.
-
-```
-open index.html
+```bash
+curl -fsSL https://raw.githubusercontent.com/avibarit/omarchy-escape/main/install.sh | bash
+omarchy-escape
 ```
 
-## True bindings taught (real Super)
+From a local clone: `./install.sh`
+
+That installs a desktop entry, an `omarchy-escape` launcher on `PATH`, and a Hyprland submap so **real Super chords reach the game** while its window is focused.
+
+- GTK3 + WebKitGTK host (`org.omarchy.escape`) — no Electron, no browser tabs.
+- Colors follow the current Omarchy theme.
+- **Unlock Super** (header button, or `Super+Escape`) gives Super back to Hyprland. Then `Super+W` closes the app.
+- `Quit` in the header also exits without Super.
+
+### Why a submap?
+
+Hyprland owns `Super`. A browser or Electron window never sees `Super+1` / `Super+W` / `Super+Enter` on Omarchy. While this window is focused the compositor switches to an empty `omarchy-escape` submap, so those binds pass through. Focus anything else and the desktop bindings come back. Unlock Super (or Super+Escape) leaves the submap *and stays left* until you click Grab Super — so Super+W is Hyprland's close-window again.
+
+## Browser fallback
+
+Open `index.html` in a browser if you just want to read the UI. Super will not work there on Omarchy — use `Alt` as Super or the Fallback pad.
+
+## True bindings taught
 
 | Omarchy | In-game |
 |---|---|
@@ -46,19 +46,7 @@ open index.html
 | `Super + Space` | Launcher (type 1–4) |
 | `Super + L` | dwindle ↔ scrolling (slow Shrink 10s) |
 | `Super + K` | This cheat sheet (pauses) |
-
-The game listens for the **real `Super` key** (`e.metaKey` = Win/Cmd).
-
-### Browser caveat (important)
-
-Browsers/OS reserve some `Super` combos (`Super+1/W/Tab/Space` switch tabs, close tabs, Spotlight…).
-`preventDefault()` is attempted, but may fail depending on browser/OS. Therefore:
-
-- Hold **`Alt` as Super fallback** — accepted silently everywhere. HUD always displays the true `Super` binding.
-- Click workspace pills `1–4` or the **Fallback pad** — same actions, for when the browser eats the key.
-- Calibration on the title screen tells you whether real `Super` was seen.
-
-This keeps muscle-memory teaching correct (`Super` labels) while staying playable.
+| `Super + Escape` | Release Super to the desktop (then Super+W quits) |
 
 ## How it tiles (Hyprland dwindle)
 
@@ -71,7 +59,7 @@ The Shrink always corrupts the **least-recently-focused** client, not a grid edg
 - **L0 Calibration** — movefocus + `Super+K`, no collapse
 - **L1 Unused windows rot** — cycle focus, two keys
 - **L2 Kill or swap** — leaky client in the tree
-- **L3 Jump workspace** — fast collapse, `Super+2/Tab`
+- **L3 Jump workspace** — `Super+2/Tab`
 - **L4 movetoworkspace** — `Super+Shift+2`
 - **L5 Spawn & togglesplit** — `Super+J`, `Super+Enter`
 - **L6 Full session** — 4 workspaces; requires `Super+F` fullscreen and `Super+L` scrolling, then `W` / exit on ws 4
@@ -81,13 +69,16 @@ Death screen tells you which dispatcher would have saved you. End screen shows p
 ## Files
 
 ```
-index.html  — Waybar, desktop, overlays
+omarchy-escape          — native GTK/WebKit host
+hypr/omarchy-escape.lua — Super passthrough submap
+install.sh              — desktop entry + Hyprland hook
+index.html              — Waybar, desktop, overlays
 css/style.css
-js/input.js   — Meta/Alt combo matcher, pad wiring
-js/tiling.js  — dwindle BSP + scrolling compositor
-js/levels.js  — L0–L6 session setups
-js/game.js    — state, dispatchers, loop, render
+js/input.js             — Super/Alt matcher, native inject, pad
+js/tiling.js            — dwindle BSP + scrolling compositor
+js/levels.js            — L0–L6 session setups
+js/game.js              — state, dispatchers, loop, render
 test/tiling.test.js
 ```
 
-Verified against Omarchy manual hotkeys (`Super+K` sheet, Navigation page) Aug 2026.
+Verified against Omarchy 4 / Hyprland 0.56 Core 12 (`Super+K` sheet, Navigation page).

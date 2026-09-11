@@ -458,15 +458,15 @@
     const r = curRoom();
     const f = T().focused(r);
     if (!f) {
-      S.hp -= 6 * dt;
+      S.hp -= 4 * dt;
     } else if (f.glitch) {
-      S.hp -= 20 * dt;
-      if (Math.random() < dt * 5) window.Sfx.bad();
-    } else if (f.corrupt) {
-      S.hp -= 16 * dt;
+      S.hp -= 10 * dt;
       if (Math.random() < dt * 3) window.Sfx.bad();
+    } else if (f.corrupt) {
+      S.hp -= 8 * dt;
+      if (Math.random() < dt * 2) window.Sfx.bad();
     } else {
-      S.hp = Math.min(100, S.hp + 2 * dt);
+      S.hp = Math.min(100, S.hp + 3 * dt);
     }
     if (S.hp <= 0) {
       S.hp = 0; renderAll();
@@ -603,6 +603,12 @@
     const L = S.L;
     const pct = L.collapseEvery > 0 ? Math.min(100, (S.collapseT / L.collapseEvery) * 100) : 0;
     $('collapse-bar').style.width = pct + '%';
+    const wrap = $('collapse-bar-wrap');
+    if (wrap) {
+      wrap.title = L.collapseEvery > 0
+        ? ('Shrink in ' + Math.max(0, L.collapseEvery - S.collapseT).toFixed(1) + 's')
+        : 'Shrink off';
+    }
     if ((S._wsT = (S._wsT || 0) + (dt || 0)) > 0.4 || !dt) { renderWsBar(); S._wsT = 0; }
   }
 
@@ -628,5 +634,5 @@
     requestAnimationFrame(loop);
   });
 
-  window.OmarchyGame = { handleShortcut, onEscape, onLauncherSubmit, newGame, get state() { return S; } };
+  window.OmarchyGame = { handleShortcut, onEscape, onLauncherSubmit, newGame, toast, get state() { return S; } };
 })();

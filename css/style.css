@@ -48,6 +48,47 @@ button.primary{background:var(--acc);color:#042028;border-color:transparent;font
 .hidden{display:none!important}
 #app{max-width:1280px;margin:0 auto;padding:8px 12px 24px}
 
+html.omarchy-native, html.omarchy-native body{
+  height:100%;
+  overflow:hidden;
+  background:var(--bg);
+}
+html.omarchy-native #app{
+  max-width:none;
+  height:100%;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+}
+html.omarchy-native #waybar{flex-shrink:0}
+html.omarchy-native #collapse-bar-wrap{flex-shrink:0;margin:0}
+html.omarchy-native #main{
+  flex:1;
+  min-height:0;
+  gap:0;
+  grid-template-columns:1fr 300px;
+}
+html.omarchy-native #board-col{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  padding:8px 10px 10px;
+}
+html.omarchy-native #board{
+  aspect-ratio:auto;
+  flex:1;
+  min-height:0;
+  height:auto;
+  border-radius:0;
+  border-left:none;
+}
+html.omarchy-native #side{
+  overflow:auto;
+  padding:8px 10px 10px 0;
+  border-left:1px solid var(--line);
+}
+
 /* Waybar */
 #waybar{
   display:flex;
@@ -101,6 +142,9 @@ button.primary{background:var(--acc);color:#042028;border-color:transparent;font
 #combo{color:var(--acc);min-width:1.6em;font-variant-numeric:tabular-nums;font-weight:700}
 #combo.hot{color:var(--acc2)}
 #hp,#energy,#frags,#clock{font-variant-numeric:tabular-nums}
+#btn-super,#btn-quit{font-size:11px;white-space:nowrap}
+#btn-super.released{border-color:var(--warn);color:var(--warn)}
+#super-status.released{color:var(--warn)}
 
 #collapse-bar-wrap{
   height:3px;background:#0a0e14;

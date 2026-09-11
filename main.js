@@ -1,16 +1,11 @@
-/* main.js — Electron native wrapper for Omarchy Escape.
+/* main.js — optional Electron wrapper (macOS / non-Omarchy).
  *
- * Why native helps: a browser reserves Cmd+1..4 / Cmd+W / Cmd+F / Ctrl+Tab
- * for tabs & window management, so the page never sees those Super combos.
- * An Electron window has no tabs, no tab-switcher and no close-tab binding
- * (menu removed below), so the real Super key reaches the game.
- *
- * Still OS-reserved (cannot be fixed here): macOS Cmd+Tab (app switcher)
- * and Cmd+Space (Spotlight). Use the in-game Fallback pad for those, or
- * disable/rebind them in System Settings. Same on Omarchy/Hyprland itself:
- * the compositor grabs Super+... before any client sees it.
+ * On Omarchy the real host is ./omarchy-escape (GTK + WebKitGTK) plus
+ * hypr/omarchy-escape.lua, which hands Super to the game while focused.
+ * Electron cannot beat Hyprland's Super binds; keep this file only as a
+ * fallback where Super == Cmd and there is no compositor grab.
  */
-const { app, BrowserWindow, globalShortcut, Menu } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron');
 const path = require('path');
 
 let win = null;
@@ -115,6 +110,10 @@ app.whenReady().then(() => {
 
 app.on('browser-window-focus', registerAll);
 app.on('browser-window-blur', () => globalShortcut.unregisterAll());
+
+ipcMain.on('unlock-super', () => globalShortcut.unregisterAll());
+ipcMain.on('lock-super', () => registerAll());
+ipcMain.on('quit-app', () => app.quit());
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
 
