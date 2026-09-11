@@ -1,0 +1,13 @@
+{
+  "name": "omarchy-escape",
+  "version": "1.0.0",
+  "description": "Omarchy tiling-shortcuts survival trainer (Electron native wrapper)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --check main.js && node --check preload.js && for f in js/*.js; do node --check \"$f\"; done && echo ALL_OK"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0"
+  }
+}

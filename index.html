@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OMARCHY ESCAPE — Tiling Survival Trainer</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Waybar-style top bar -->
+  <header id="waybar">
+    <div class="wb-left">
+      <span class="logo">◈ OMARCHY<span class="logo-sub">ESCAPE</span></span>
+      <nav id="workspaces" aria-label="Workspaces">
+        <button class="ws" data-ws="1"><span class="ws-num">1</span><span class="ws-dots"></span></button>
+        <button class="ws" data-ws="2"><span class="ws-num">2</span><span class="ws-dots"></span></button>
+        <button class="ws" data-ws="3"><span class="ws-num">3</span><span class="ws-dots"></span></button>
+        <button class="ws" data-ws="4"><span class="ws-num">4</span><span class="ws-dots"></span></button>
+      </nav>
+      <span id="layout-badge" title="Workspace layout (Super+L)">dwindle</span>
+    </div>
+    <div class="wb-right">
+      <span id="level-label">L0</span>
+      <span id="hp-wrap" title="Window integrity">♥ <span id="hp">100</span></span>
+      <span id="energy-wrap" title="Spawn energy (Super+Return costs 25)">⚡ <span id="energy">100</span></span>
+      <span id="frag-wrap" title="Key fragments">◆ <span id="frags">0/0</span></span>
+      <span id="clock">00:00</span>
+      <button id="btn-help" title="Super+K">? keys</button>
+      <button id="btn-mute" title="toggle sound">🔊</button>
+    </div>
+  </header>
+
+  <div id="collapse-bar-wrap" title="Room collapse timer">
+    <div id="collapse-bar"></div>
+  </div>
+
+  <main id="main">
+    <section id="board-col">
+      <div id="room-title">
+        <span id="room-name">Room 1 — Workspace 1</span>
+        <span id="split-badge" title="Split direction (Super+J)">split: ═</span>
+      </div>
+      <div id="board" role="grid" aria-label="Tiling room"></div>
+      <div id="toast" class="hidden"></div>
+    </section>
+
+    <aside id="side">
+      <div class="panel" id="objective-panel">
+        <h2>Objective</h2>
+        <p id="objective-text"></p>
+        <ul id="tasks"></ul>
+      </div>
+      <div class="panel" id="keys-panel">
+        <h2>Pressed</h2>
+        <div id="key-visual">press <kbd>Super</kbd> + …</div>
+        <div id="super-status" class="warn">waiting for Super…</div>
+        <h2 style="margin-top:10px">Fallback pad <span class="tiny">(click = same as shortcut)</span></h2>
+        <div id="pad">
+          <button data-act="focus-up">←↑↓→ focus</button>
+          <button data-act="swap">⇄ swap</button>
+          <button data-act="ws1">ws 1</button>
+          <button data-act="ws2">ws 2</button>
+          <button data-act="ws3">ws 3</button>
+          <button data-act="ws4">ws 4</button>
+          <button data-act="carry1">carry→1</button>
+          <button data-act="carry2">carry→2</button>
+          <button data-act="next">next ws</button>
+          <button data-act="prev">prev ws</button>
+          <button data-act="split">J split</button>
+          <button data-act="fullscreen">F shield</button>
+          <button data-act="close">W close</button>
+          <button data-act="spawn">⏎ spawn</button>
+          <button data-act="launcher">Space launch</button>
+          <button data-act="layout">L layout</button>
+        </div>
+      </div>
+      <div class="panel" id="log-panel">
+        <h2>wm log</h2>
+        <div id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Title / calibration overlay -->
+  <div id="overlay-title" class="overlay">
+    <div class="card">
+      <h1>◈ OMARCHY ESCAPE</h1>
+      <p class="sub">You are a window. The rooms are closing in.</p>
+      <div class="how">
+        <p>This trainer uses your <b>real <kbd>Super</kbd> (Win/Cmd) key</b> — just like Omarchy/Hyprland.</p>
+        <ol>
+          <li>Hold <kbd>Super</kbd> and tap <kbd>→</kbd> to move focus.</li>
+          <li><kbd>Super</kbd>+<kbd>1..4</kbd> jumps between Rooms (workspaces).</li>
+          <li><kbd>Super</kbd>+<kbd>K</kbd> anytime = cheat sheet.</li>
+        </ol>
+        <p class="tiny">Browsers sometimes eat <kbd>Super</kbd>+<kbd>1/W/Tab/Space</kbd> (they switch tabs / close / spotlight).
+        If a combo doesn't register, hold <kbd>Alt</kbd> instead of <kbd>Super</kbd>, or click the Fallback pad / workspace pills.
+        The HUD always teaches the true Omarchy binding.</p>
+        <div id="calib">
+          <p>Calibration: hold <kbd>Super</kbd> and press <kbd>→</kbd> now:</p>
+          <div id="calib-status">waiting…</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btn-start" class="primary">Start L0 — calibration →</button>
+        <button id="btn-how">How collapse works</button>
+      </div>
+      <p id="how-text" class="hidden tiny">Every few seconds <b>The Shrink</b> corrupts the outer edge of the current room (red tiles).
+      Standing on corruption drains ♥. Move focus (<kbd>Super</kbd>+Arrows), jump rooms (<kbd>Super</kbd>+1-4),
+      swap glitches away (<kbd>Super</kbd>+<kbd>Shift</kbd>+Arrows), spawn safe tiles (<kbd>Super</kbd>+<kbd>⏎</kbd>),
+      shield (<kbd>Super</kbd>+<kbd>F</kbd>). Collect ◆ then reach the green exit.</p>
+    </div>
+  </div>
+
+  <!-- Help overlay (Super+K) -->
+  <div id="overlay-help" class="overlay hidden">
+    <div class="card wide">
+      <h1>Super+K — bindings</h1>
+      <p class="sub">The Core 12. Collapse is paused while this is open.</p>
+      <div class="kb-grid">
+        <div><kbd>Super + ←↑↓→</kbd><span>Move focus</span></div>
+        <div><kbd>Super + Shift + ←↑↓→</kbd><span>Swap window</span></div>
+        <div><kbd>Super + 1–4</kbd><span>Jump to Room</span></div>
+        <div><kbd>Super + Shift + 1–4</kbd><span>Carry fragment to Room</span></div>
+        <div><kbd>Super + Tab / Shift+Tab</kbd><span>Next / prev Room</span></div>
+        <div><kbd>Super + J</kbd><span>Toggle split H↔V (repairs 1 edge)</span></div>
+        <div><kbd>Super + F</kbd><span>Fullscreen shield 3s</span></div>
+        <div><kbd>Super + W</kbd><span>Close adjacent glitch</span></div>
+        <div><kbd>Super + Enter</kbd><span>Spawn safe tile (25⚡)</span></div>
+        <div><kbd>Super + Space</kbd><span>Launcher (type 1–4)</span></div>
+        <div><kbd>Super + L</kbd><span>dwindle ↔ scrolling (slow collapse 10s)</span></div>
+        <div><kbd>Super + K</kbd><span>This sheet</span></div>
+      </div>
+      <div class="row"><button id="btn-close-help" class="primary">Resume (Super+K)</button></div>
+    </div>
+  </div>
+
+  <!-- Launcher overlay (Super+Space) -->
+  <div id="overlay-launch" class="overlay hidden">
+    <div class="card small">
+      <h1>Launcher</h1>
+      <p class="sub">Type <b>1–4</b> + Enter to jump. Esc closes.</p>
+      <input id="launch-input" placeholder="jump to room…" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- Level complete / dead -->
+  <div id="overlay-end" class="overlay hidden">
+    <div class="card">
+      <h1 id="end-title">Room survived</h1>
+      <p class="sub" id="end-sub"></p>
+      <div id="end-stats"></div>
+      <div class="row">
+        <button id="btn-next" class="primary">Next →</button>
+        <button id="btn-retry">Retry</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/tiling.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
